@@ -1,0 +1,206 @@
+/* laCuenta - webxdc app styles */
+:root {
+  --bg: #0f172a;
+  --panel: #111827;
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --accent: #22d3ee;
+  --accent-2: #a78bfa;
+  --danger: #f43f5e;
+  --ok: #34d399;
+  --border: rgba(255, 255, 255, 0.1);
+}
+
+* { 
+  box-sizing: border-box; 
+}
+
+html, body { 
+  height: 100%; 
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  color: var(--text);
+  background-color: var(--bg);
+  line-height: 1.6;
+  padding: 1rem;
+}
+
+/* Header */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 { 
+  margin: 0; 
+  font-size: 1.75rem; 
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--accent);
+}
+
+/* Main content */
+.app-main {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.welcome-section {
+  text-align: center;
+  padding: 3rem 2rem;
+  background: linear-gradient(145deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 2rem;
+}
+
+.welcome-section h2 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.welcome-section p {
+  font-size: 1.1rem;
+  color: var(--muted);
+  margin-bottom: 2rem;
+}
+
+.content-area {
+  padding: 2rem;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-height: 200px;
+}
+
+/* Buttons */
+.primary-btn, .secondary-btn, button {
+  background: var(--accent);
+  border: none;
+  color: #0a1b20;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.primary-btn:hover {
+  background: #18b8d4;
+  transform: translateY(-1px);
+}
+
+.primary-btn:active {
+  transform: translateY(0);
+}
+
+.secondary-btn {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.secondary-btn:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Utilities */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Responsive design */
+@media (max-width: 640px) {
+  body {
+    padding: 0.5rem;
+  }
+  
+  .app-header {
+    margin-bottom: 1rem;
+  }
+  
+  .welcome-section {
+    padding: 2rem 1rem;
+  }
+  
+  .welcome-section h2 {
+    font-size: 1.5rem;
+  }
+  
+  .content-area {
+    padding: 1rem;
+  }
+}
+
+/* Dark mode enhancements */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff;
+    --panel: #f8fafc;
+    --text: #1e293b;
+    --muted: #64748b;
+    --border: rgba(0, 0, 0, 0.1);
+  }
+  
+  .welcome-section {
+    background: linear-gradient(145deg, rgba(0,0,0,0.02), rgba(0,0,0,0.005));
+  }
+  
+  .content-area {
+    background: rgba(0,0,0,0.02);
+  }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.welcome-section {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.content-area {
+  animation: fadeIn 0.5s ease-out 0.1s both;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
