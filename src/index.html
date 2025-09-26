@@ -3,26 +3,29 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>laCuenta — webxdc</title>
+  <title>macuenta — webxdc</title>
     <link rel="icon" href="icon.png" />
     <script src="webxdc.js"></script>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="app-header">
-      <h1>laCuenta</h1>
+  <h1>macuenta</h1>
     </header>
 
     <main class="app-main">
       <div class="welcome-section">
-        <h2>Welcome to laCuenta</h2>
-        <p>Your new webxdc app is ready to be built!</p>
-        
-        <button id="demo-btn" class="primary-btn">Demo Button</button>
+        <h2>Shared expenses skeleton</h2>
+        <p>Prototype sync: add dummy expenses and see the count sync across peers.</p>
+        <div style="display:flex;gap:.75rem;flex-wrap:wrap;justify-content:center;">
+          <button id="add-expense-btn" class="primary-btn">Add dummy expense</button>
+          <button id="noop-btn" class="secondary-btn">Send noop</button>
+        </div>
       </div>
       
       <div id="content" class="content-area">
-        <!-- Your app content goes here -->
+        <p><strong>Expenses:</strong> <span id="expense-count">0</span></p>
+        <p class="muted" style="color:var(--muted);font-size:.9rem;">This is Step 1: skeleton app & state sync. Only expense.add + noop events are implemented.</p>
       </div>
     </main>
 
