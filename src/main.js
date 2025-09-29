@@ -8,21 +8,112 @@
   // Elements
   // ------------------------------
   const el = {
-    addExpenseBtn: document.getElementById('add-expense-btn'),
-    noopBtn: document.getElementById('noop-btn'),
+    appMain: document.querySelector('.app-main'),
     content: document.getElementById('content'),
+    views: Array.from(document.querySelectorAll('.app-view')),
+    tabBar: document.getElementById('tab-bar'),
+    fabAdd: document.getElementById('fab-add'),
+  headerSubtitle: document.getElementById('header-subtitle'),
+  // Dynamic group name now resides in hero card (id=group-name)
+  headerTitle: document.getElementById('group-name'),
+  participantsSummary: document.getElementById('participants-summary'),
+  participantsSummaryText: document.getElementById('participants-summary-text'),
+  headerTotal: document.getElementById('header-total'),
+  participantsSheetBackdrop: document.getElementById('participants-sheet-backdrop'),
+  participantsSheet: document.getElementById('participants-sheet'),
+  participantsSheetClose: document.getElementById('participants-sheet-close'),
+  participantsSheetAddBtn: document.getElementById('participants-sheet-add'),
+  participantsSheetList: document.getElementById('participants-sheet-list'),
+  participantsSheetEmpty: document.getElementById('participants-sheet-empty'),
+  participantsActiveCount: document.getElementById('participants-active-count'),
+  participantsArchivedSection: document.getElementById('participants-archived-section'),
+  participantsArchivedList: document.getElementById('participants-archived-list'),
+  participantsArchivedEmpty: document.getElementById('participants-archived-empty'),
+  participantsArchivedCount: document.getElementById('participants-archived-count'),
+  participantEditor: document.getElementById('participant-editor'),
+  participantEditorInput: document.getElementById('participant-name-input'),
+  participantEditorSubmit: document.getElementById('participant-editor-submit'),
+  participantEditorCancel: document.getElementById('participant-editor-cancel'),
     expenseCount: document.getElementById('expense-count'),
+    expenseForm: document.getElementById('expense-form'),
+    expenseTitle: document.getElementById('exp-title'),
+    expenseAmount: document.getElementById('exp-amount'),
+    expenseDate: document.getElementById('exp-date'), // Ensure date input is present
+    expensesList: document.getElementById('expenses-list'),
+    noExpensesHint: document.getElementById('no-expenses-hint'),
+    expensesEmpty: document.getElementById('expenses-empty'), // new empty state container
+    toastStack: document.getElementById('toast-stack'), // toast stack container
+    payerDisplay: document.getElementById('exp-payer'),
+  payerSelect: document.getElementById('exp-payer'),
+    balancesList: document.getElementById('balances-list'),
+    noBalancesHint: document.getElementById('no-balances-hint'),
+    balanceChart: document.getElementById('balance-chart'),
+    settlementsList: document.getElementById('settlements-list'),
+    noSettlementsHint: document.getElementById('no-settlements-hint'),
+    splitModeSelect: document.getElementById('split-mode'),
+    splitConfig: document.getElementById('split-config'),
+    completedSettlementsList: document.getElementById('completed-settlements-list'),
+    noCompletedSettlementsHint: document.getElementById('no-completed-settlements-hint'),
+  settlementSheetBackdrop: document.getElementById('settlement-sheet-backdrop'),
+  settlementSheet: document.getElementById('settlement-sheet'),
+  settlementSheetClose: document.getElementById('settlement-sheet-close'),
+  settlementForm: document.getElementById('settlement-form'),
+  settleFrom: document.getElementById('settle-from'),
+  settleTo: document.getElementById('settle-to'),
+  settleSwap: document.getElementById('settle-swap'),
+  settleAmount: document.getElementById('settle-amount'),
+  settleCurrency: document.getElementById('settle-currency'),
+  settleCancel: document.getElementById('settle-cancel'),
+    onboardingScreen: document.getElementById('onboarding-screen'),
+    onboardingTitleInput: document.getElementById('onboarding-title'),
+    onboardingCurrencySelect: document.getElementById('onboarding-currency'),
+    onboardingParticipantChips: document.getElementById('onboarding-participant-chips'),
+    onboardingParticipantInput: document.getElementById('onboarding-participant-input'),
+    onboardingAddParticipantBtn: document.getElementById('onboarding-add-participant'),
+    onboardingStartBtn: document.getElementById('onboarding-start'),
   };
 
   // ------------------------------
   // App State
   // ------------------------------
+  const DEFAULT_CURRENCY = 'EUR';
+  const currencySymbols = {
+    EUR: '€',
+    USD: '$',
+    GBP: '£',
+    CHF: 'CHF',
+  };
+
   const state = {
     initialized: false,
     events: [], // raw updates (envelopes) as received
     expenses: new Map(), // expenseId -> expense object (last wins)
     expenseCount: 0,
     clientId: randomId(),
+    actorName: deriveActorName(),
+    balances: new Map(), // participant -> net balance (minor units)
+    settlements: [], // suggested transfers { from, to, amountMinor }
+    recordedSettlements: [], // actual settlement.add events
+    editingExpenseId: null,
+    participants: new Map(), // id-> {id, displayName, ...}
+    meta: {
+      title: '',
+      currency: 'EUR',
+    },
+    onboardingDraft: {
+      title: '',
+      currency: DEFAULT_CURRENCY,
+      participants: [],
+    },
+    localParticipantId: null,
+    debugMode: !(typeof window !== 'undefined' && window.webxdc),
+    onboardingCompleted: false,
+    lastSelectedPayerId: null,
+  };
+
+  const ui = {
+    participantEditorMode: 'idle', // 'idle' | 'add' | 'edit'
+    editingParticipantId: null,
   };
 
   // ------------------------------
@@ -39,6 +130,26 @@
     });
   }
 
+  function deriveActorName() {
+    // Try to guess a human-friendly name from webxdc if available
+    try {
+      if (window.webxdc && window.webxdc.selfAddr) {
+        return window.webxdc.selfName || window.webxdc.selfAddr || 'me';
+      }
+    } catch (_) { /* ignore */ }
+    // Fallback to a short random tag
+    return 'user-' + Math.random().toString(36).slice(2, 6);
+  }
+
+  function activeCurrency() {
+    return state.meta?.currency || DEFAULT_CURRENCY;
+  }
+
+  function shouldShowOnboarding() {
+    if (state.onboardingCompleted) return false;
+    return !state.meta?.title && state.expenseCount === 0;
+  }
+
   // ------------------------------
   // webxdc Integration
   // ------------------------------
@@ -50,9 +161,19 @@
         handleIncomingEnvelope({ payload: envelope });
         return Promise.resolve();
       }
+      const infoMap = {
+        'expense.add': 'Added expense',
+        'expense.edit': 'Updated expense',
+        'expense.delete': 'Removed expense',
+        'meta.patch': 'Updated trip details',
+        'participant.add': 'Added participant',
+        'participant.edit': 'Updated participant',
+        'participant.archive': 'Archived participant',
+        'settlement.add': 'Recorded settlement',
+      };
       window.webxdc.sendUpdate({
         payload: envelope,
-        info: envelope.type === 'expense.add' ? 'Added expense' : 'noop',
+        info: infoMap[envelope.type] || 'macuenta update',
         summary: '',
       });
     } catch (error) {
@@ -64,7 +185,7 @@
     if (!update || !update.payload) return;
     const env = update.payload;
     if (!env || env.v !== 1) return;
-    if (!['expense.add', 'noop'].includes(env.type)) return; // ignore unknown types for step1
+  if (!['expense.add', 'expense.edit', 'expense.delete', 'participant.add', 'participant.edit', 'participant.archive', 'settlement.add', 'meta.patch', 'noop'].includes(env.type)) return; // ignore unknown types
 
     // Deduplicate by eventId
     if (state.events.find(e => e.eventId === env.eventId)) return;
@@ -74,12 +195,33 @@
   }
 
   function applyEnvelope(env) {
-    if (env.type === 'expense.add' && env.expense) {
+    if (env.expense && (env.type === 'expense.add' || env.type === 'expense.edit')) {
       const cur = state.expenses.get(env.expense.id);
       if (!cur || env.expense.rev > cur.rev) {
         state.expenses.set(env.expense.id, env.expense);
       }
+    } else if (env.type === 'expense.delete' && env.expense) {
+      const cur = state.expenses.get(env.expense.id);
+      if (!cur || env.expense.rev > cur.rev) {
+        state.expenses.set(env.expense.id, env.expense); // tombstone has deleted:true
+      }
+    } else if (env.type === 'participant.add' && env.participant) {
+      upsertParticipantFromEvent(env.participant);
+    } else if (env.type === 'participant.edit' && env.participant) {
+      editParticipantFromEvent(env.participant);
+    } else if (env.type === 'participant.archive' && env.participant) {
+      archiveParticipantFromEvent(env.participant);
+    } else if (env.type === 'meta.patch' && env.meta) {
+      applyMetaPatch(env.meta);
+    } else if (env.type === 'settlement.add' && env.settlement) {
+      if (!state.recordedSettlements.find(s => s.id === env.settlement.id)) {
+        state.recordedSettlements.push(env.settlement);
+      }
+    }
+    if (['expense.add','expense.edit','expense.delete','settlement.add'].includes(env.type)) {
       recomputeExpenseCount();
+      recomputeBalances();
+      recomputeSettlements();
     }
     // noop: nothing else
     updateSubtitle();
@@ -93,8 +235,147 @@
     state.expenseCount = count;
   }
 
+  function recomputeBalances() {
+    const balances = new Map();
+    const expenses = Array.from(state.expenses.values()).filter(e => !e.deleted);
+    if (!expenses.length) { state.balances = balances; return; }
+
+    function computeOwed(exp) {
+      const out = new Map();
+      const splits = Array.isArray(exp.splits) ? exp.splits : [];
+      const total = exp.amountMinor;
+      if (!splits.length) {
+        // Fallback legacy: even across current participants map
+  const all = activeParticipants().map(p => p.id).sort();
+        if (!all.length) return out;
+        const base = Math.floor(total / all.length);
+        let rem = total - base * all.length;
+        all.forEach(p => out.set(p, base));
+        for (let i=0; i<all.length && rem>0; i++, rem--) out.set(all[i], out.get(all[i]) + 1);
+        return out;
+      }
+      const manual = splits.filter(s => s.mode === 'manual' && typeof s.amountMinor === 'number' && s.amountMinor > 0);
+      const weight = splits.filter(s => s.mode === 'weight' && typeof s.weight === 'number' && s.weight > 0);
+      const even = splits.filter(s => s.mode === 'even');
+      const sumManual = manual.reduce((a,s)=>a+s.amountMinor,0);
+      if (sumManual > total) return out; // invalid
+      manual.forEach(s => out.set(s.participantId, s.amountMinor));
+      let remaining = total - sumManual;
+      if (remaining === 0) return out;
+      if (weight.length) {
+        const totalWeight = weight.reduce((a,s)=>a+s.weight,0);
+        if (totalWeight <=0) return out;
+        const ordered = [...weight].sort((a,b)=> a.participantId.localeCompare(b.participantId));
+        let allocated = 0;
+        ordered.forEach((s,idx) => {
+          let share;
+          if (idx === ordered.length - 1) {
+            share = remaining - allocated;
+          } else {
+            share = Math.round(remaining * s.weight / totalWeight);
+            allocated += share;
+          }
+          out.set(s.participantId, (out.get(s.participantId) || 0) + share);
+        });
+      } else if (even.length) {
+        const ordered = [...even].sort((a,b)=> a.participantId.localeCompare(b.participantId));
+        const base = Math.floor(remaining / ordered.length);
+        let rem = remaining - base * ordered.length;
+        ordered.forEach(s => out.set(s.participantId, (out.get(s.participantId)||0) + base));
+        for (let i=0; i<ordered.length && rem>0; i++, rem--) {
+          const pid = ordered[i].participantId;
+          out.set(pid, out.get(pid) + 1);
+        }
+      } else {
+        return new Map(); // invalid remainder
+      }
+      // Reconcile ±1 diff
+      const sum = Array.from(out.values()).reduce((a,b)=>a+b,0);
+      let diff = total - sum;
+      if (diff !== 0) {
+        const arr = Array.from(out.entries()).sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0]));
+        if (arr.length) {
+          out.set(arr[0][0], arr[0][1] + diff);
+        }
+      }
+      return out;
+    }
+
+    expenses.forEach(exp => {
+      const payer = exp.payer;
+      const owed = computeOwed(exp);
+      if (!owed.size) return; // skip invalid
+      addBalance(balances, payer, exp.amountMinor);
+      owed.forEach((amt, pid) => addBalance(balances, pid, -amt));
+    });
+    state.balances = balances;
+    // Apply recorded settlements (from pays to)
+    state.recordedSettlements.forEach(s => {
+      addBalance(state.balances, s.from, -s.amountMinor);
+      addBalance(state.balances, s.to, s.amountMinor);
+    });
+  }
+
+  function recomputeSettlements() {
+    // Build creditors (positive) and debtors (negative) from balances map
+    const creditors = [];
+    const debtors = [];
+    state.balances.forEach((v, k) => {
+      if (v > 0) creditors.push({ name: k, amount: v });
+      else if (v < 0) debtors.push({ name: k, amount: -v }); // store absolute owed
+    });
+    creditors.sort((a,b) => b.amount - a.amount || a.name.localeCompare(b.name));
+    debtors.sort((a,b) => b.amount - a.amount || a.name.localeCompare(b.name));
+
+    const settlements = [];
+    let ci = 0, di = 0;
+    while (ci < creditors.length && di < debtors.length) {
+      const c = creditors[ci];
+      const d = debtors[di];
+      const transfer = Math.min(c.amount, d.amount);
+      if (transfer > 0) {
+        settlements.push({ from: d.name, to: c.name, amountMinor: transfer });
+        c.amount -= transfer;
+        d.amount -= transfer;
+      }
+      if (c.amount === 0) ci++;
+      if (d.amount === 0) di++;
+    }
+    state.settlements = settlements;
+  }
+
+  // Record a settlement that user confirms has been paid externally
+  function recordSettlement(from, to, amountMinor) {
+    // Basic validation: positive amount and participants must differ
+    if (!from || !to || from === to) return;
+    if (!(amountMinor > 0)) return;
+    // Prevent duplicates with same from/to/amount that already exist (idempotence helper)
+    const existing = state.recordedSettlements.find(s => s.from === from && s.to === to && s.amountMinor === amountMinor);
+    if (existing) return; // already recorded (we could still allow multiple partials, but keep simple for now)
+    const settlement = {
+      id: crypto.randomUUID(),
+      from, to, amountMinor,
+      createdAt: Date.now(),
+      createdBy: state.localParticipantId || 'local'
+    };
+    sendEnvelope({ type: 'settlement.add', settlement });
+  }
+
+  function addBalance(map, participant, delta) {
+    map.set(participant, (map.get(participant) || 0) + delta);
+  }
+
   function updateSubtitle() {
-    const subtitle = `${state.expenseCount} expense${state.expenseCount === 1 ? '' : 's'}`;
+    const transferCount = state.settlements.length;
+    let suffix;
+    if (transferCount === 0) {
+      suffix = 'All settled';
+    } else if (transferCount === 1) {
+      suffix = '1 transfer to settle';
+    } else {
+      suffix = `${transferCount} transfers to settle`;
+    }
+    const subtitle = `${state.expenseCount} expense${state.expenseCount === 1 ? '' : 's'} • ${suffix}`;
     if (window.webxdc && window.webxdc.setInfo) {
       window.webxdc.setInfo({
         title: 'macuenta',
@@ -104,26 +385,72 @@
     }
   }
 
-  function broadcastDummyExpense() {
-    const expense = {
+  function createExpense({ title, amountMinor, splits }) {
+    return {
       id: randomId(),
       rev: 1,
-      description: 'Dummy expense',
-      amountMinor: 1234, // 12.34
-      currency: 'EUR',
-      payer: 'demo',
-      splits: [],
+      description: title,
+      amountMinor,
+  currency: activeCurrency(),
+      payer: state.actorName,
+      splits: Array.isArray(splits) ? splits : [],
       createdAt: Date.now(),
       createdBy: state.clientId,
     };
+  }
+
+  function cloneForEdit(expense, newFields) {
+    return {
+      ...expense,
+      ...newFields,
+      rev: (expense.rev || 1) + 1,
+      editedAt: Date.now(),
+      editedBy: state.clientId,
+    };
+  }
+
+  function broadcastExpense(expense) {
     const envelope = {
       v: 1,
       type: 'expense.add',
       ts: Date.now(),
-      actor: 'demo',
+      actor: state.actorName,
       clientId: state.clientId,
       eventId: randomId(),
       expense,
+    };
+    sendEnvelope(envelope);
+  }
+
+  function broadcastExpenseEdit(expense) {
+    const envelope = {
+      v: 1,
+      type: 'expense.edit',
+      ts: Date.now(),
+      actor: state.actorName,
+      clientId: state.clientId,
+      eventId: randomId(),
+      expense,
+    };
+    sendEnvelope(envelope);
+  }
+
+  function broadcastExpenseDelete(expense) {
+    const tombstone = {
+      ...expense,
+      rev: (expense.rev || 1) + 1,
+      deleted: true,
+      editedAt: Date.now(),
+      editedBy: state.clientId,
+    };
+    const envelope = {
+      v: 1,
+      type: 'expense.delete',
+      ts: Date.now(),
+      actor: state.actorName,
+      clientId: state.clientId,
+      eventId: randomId(),
+      expense: tombstone,
     };
     sendEnvelope(envelope);
   }
@@ -136,6 +463,58 @@
       actor: 'demo',
       clientId: state.clientId,
       eventId: randomId(),
+    };
+    sendEnvelope(envelope);
+  }
+
+  function broadcastParticipantAdd(participant) {
+    const envelope = {
+      v: 1,
+      type: 'participant.add',
+      ts: Date.now(),
+      actor: state.actorName,
+      clientId: state.clientId,
+      eventId: randomId(),
+      participant: participant,
+    };
+    sendEnvelope(envelope);
+  }
+
+  function broadcastParticipantEdit(participant) {
+    const envelope = {
+      v: 1,
+      type: 'participant.edit',
+      ts: Date.now(),
+      actor: state.actorName,
+      clientId: state.clientId,
+      eventId: randomId(),
+      participant,
+    };
+    sendEnvelope(envelope);
+  }
+
+  function broadcastParticipantArchive(participant) {
+    const envelope = {
+      v: 1,
+      type: 'participant.archive',
+      ts: Date.now(),
+      actor: state.actorName,
+      clientId: state.clientId,
+      eventId: randomId(),
+      participant,
+    };
+    sendEnvelope(envelope);
+  }
+
+  function broadcastMetaPatch(meta) {
+    const envelope = {
+      v: 1,
+      type: 'meta.patch',
+      ts: Date.now(),
+      actor: state.actorName,
+      clientId: state.clientId,
+      eventId: randomId(),
+      meta,
     };
     sendEnvelope(envelope);
   }
@@ -160,6 +539,7 @@
     if (state.initialized) return;
     
   console.log('Initializing macuenta skeleton...');
+  console.debug('[init] onboarding screen element:', !!el.onboardingScreen, 'start btn:', !!el.onboardingStartBtn);
     
     // Initialize webxdc
     initWebxdc();
@@ -169,34 +549,1309 @@
     
     state.initialized = true;
     
+  syncOnboardingDraftFromState();
+  updateOnboardingStartState();
+    // If host replays updates immediately, balances may already be formed.
+    recomputeBalances();
+    recomputeSettlements();
     render();
     updateSubtitle();
+    // Activate initial tab from hash or default
+    const initial = (location.hash || '').replace('#','') || 'expenses';
+    setActiveTab(initial);
   }
 
   function setupEventListeners() {
-    el.addExpenseBtn && el.addExpenseBtn.addEventListener('click', () => {
-      broadcastDummyExpense();
+    el.expenseForm && el.expenseForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      submitExpenseForm();
     });
-    el.noopBtn && el.noopBtn.addEventListener('click', () => {
-      sendNoop();
+    el.splitModeSelect && el.splitModeSelect.addEventListener('change', () => {
+      refreshSplitConfigUI();
+    });
+    if (el.onboardingAddParticipantBtn) {
+      el.onboardingAddParticipantBtn.addEventListener('click', () => {
+        handleOnboardingAddParticipant();
+      });
+    }
+    if (el.onboardingParticipantInput) {
+      el.onboardingParticipantInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleOnboardingAddParticipant();
+        }
+      });
+    }
+    if (el.onboardingParticipantChips) {
+      el.onboardingParticipantChips.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-remove-participant]');
+        if (btn) {
+          handleOnboardingRemoveParticipant(btn.getAttribute('data-remove-participant'));
+        }
+      });
+    }
+    if (el.onboardingTitleInput) {
+      el.onboardingTitleInput.addEventListener('input', () => {
+        state.onboardingDraft.title = el.onboardingTitleInput.value;
+        updateOnboardingStartState();
+      });
+    }
+    if (el.onboardingCurrencySelect) {
+      el.onboardingCurrencySelect.addEventListener('change', () => {
+        state.onboardingDraft.currency = el.onboardingCurrencySelect.value;
+        updateOnboardingStartState();
+      });
+    }
+    if (el.onboardingStartBtn) {
+      el.onboardingStartBtn.addEventListener('click', () => {
+        console.debug('[onboarding] start button click listener fired');
+        handleOnboardingStart();
+      });
+    }
+    // Tab interactions
+    if (el.tabBar) {
+      el.tabBar.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-tab-target]');
+        if (!btn) return;
+        const tab = btn.getAttribute('data-tab-target');
+        setActiveTab(tab, { scrollTop: false });
+        if (window.location.hash !== '#' + tab) {
+          history.replaceState(null, '', '#' + tab);
+        }
+      });
+    }
+    // FAB
+    if (el.fabAdd) {
+      el.fabAdd.addEventListener('click', () => {
+        setActiveTab('expenses');
+        openExpenseSheet('add');
+      });
+    }
+    if (el.participantsSummary) {
+      el.participantsSummary.addEventListener('click', () => {
+        openParticipantsSheet();
+      });
+    }
+    if (el.participantsSheetAddBtn) {
+      el.participantsSheetAddBtn.addEventListener('click', () => {
+        showParticipantEditor('add');
+      });
+    }
+    if (el.participantEditor) {
+      el.participantEditor.addEventListener('submit', handleParticipantEditorSubmit);
+    }
+    if (el.participantEditorCancel) {
+      el.participantEditorCancel.addEventListener('click', () => {
+        resetParticipantEditor();
+      });
+    }
+    if (el.participantsSheetList) {
+      el.participantsSheetList.addEventListener('click', handleParticipantListAction);
+    }
+    if (el.participantsArchivedList) {
+      el.participantsArchivedList.addEventListener('click', handleParticipantListAction);
+    }
+    // Hash based routing (optional fallback)
+    window.addEventListener('hashchange', () => {
+      const hash = (location.hash || '').replace('#','');
+      if (hash) setActiveTab(hash, { scrollTop: false });
     });
   }
 
-  function render() {
-    if (el.expenseCount) {
-      el.expenseCount.textContent = String(state.expenseCount);
+  function currentTab() {
+    return (document.querySelector('.tab-btn.is-active')?.getAttribute('data-tab-target')) || 'expenses';
+  }
+
+  function setActiveTab(tab, opts = {}) {
+    const valid = ['expenses','balance','reimburse'];
+    if (!valid.includes(tab)) tab = 'expenses';
+    // Buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const t = btn.getAttribute('data-tab-target');
+      if (t === tab) btn.classList.add('is-active'); else btn.classList.remove('is-active');
+    });
+    // Views
+    el.views.forEach(v => {
+      const t = v.getAttribute('data-tab');
+      if (t === tab) { v.hidden = false; v.classList.add('is-active'); }
+      else { v.hidden = true; v.classList.remove('is-active'); }
+    });
+    // FAB only on expenses
+    if (el.fabAdd) {
+      el.fabAdd.hidden = tab !== 'expenses' || shouldShowOnboarding();
+    }
+    if (opts.scrollTop) {
+      try { document.scrollingElement.scrollTo({ top:0, behavior:'instant' }); } catch(_){}
     }
   }
 
-  // ------------------------------
-  // Initialize App
-  // ------------------------------
-  
-  // Wait for DOM to be ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
+  function render() {
+    const onboardingActive = shouldShowOnboarding();
+    if (onboardingActive) {
+      document.body.classList.add('is-onboarding');
+    } else {
+      document.body.classList.remove('is-onboarding');
+    }
+    if (el.onboardingScreen) {
+      // Force hide if we have completed onboarding (defensive in case of stale state during replay)
+      el.onboardingScreen.hidden = !onboardingActive || state.onboardingCompleted === true;
+    }
+    if (el.appMain) {
+      el.appMain.hidden = onboardingActive && !state.onboardingCompleted;
+    }
+    if (el.fabAdd) {
+      el.fabAdd.hidden = onboardingActive || currentTab() !== 'expenses';
+    }
+    renderOnboarding(onboardingActive);
+
+    if (el.expenseCount) {
+      el.expenseCount.textContent = String(state.expenseCount);
+    }
+    populatePayerSelect();
+    if (el.expensesList) {
+      const items = Array.from(state.expenses.values()).filter(e => !e.deleted).sort((a,b)=>b.createdAt - a.createdAt);
+      const grouped = groupExpensesForDisplay(items);
+      let html = '';
+      grouped.forEach(section => {
+        html += `<li class="expense-group" role="presentation">${escapeHtml(section.label)}</li>` + section.items.map(expenseCardHTML).join('');
+      });
+      el.expensesList.innerHTML = html;
+      if (el.expensesEmpty) {
+        el.expensesEmpty.style.display = items.length ? 'none' : 'flex';
+      }
+      el.expensesList.style.display = items.length ? 'flex' : 'none';
+    }
+    if (el.headerSubtitle) {
+      const totalMinor = Array.from(state.expenses.values()).filter(e => !e.deleted).reduce((a,e)=>a+e.amountMinor,0);
+      el.headerSubtitle.textContent = formatAmountDisplay(totalMinor);
+    }
+    if (el.headerTitle) {
+      const title = state.meta.title?.trim() || 'macuenta';
+      el.headerTitle.textContent = title;
+      el.headerTitle.setAttribute('title', title);
+    }
+    if (el.participantsSummaryText) {
+      const count = activeParticipants().length;
+      let label;
+      if (count === 0) label = 'Add participants';
+      else if (count === 1) label = '1 participant';
+      else label = `${count} participants`;
+      el.participantsSummaryText.textContent = label;
+      if (el.participantsSummary) {
+        if (count === 0) el.participantsSummary.classList.add('is-empty'); else el.participantsSummary.classList.remove('is-empty');
+        el.participantsSummary.disabled = shouldShowOnboarding();
+      }
+    }
+    renderParticipantsSheet();
+    if (el.balancesList) {
+      const entries = Array.from(state.balances.entries()).filter(([_,v])=>v!==0);
+      if (entries.length) {
+        // sort creditors (positive) descending, then debtors (negative) ascending absolute
+        const positives = entries.filter(e=>e[1]>0).sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0]));
+        const negatives = entries.filter(e=>e[1]<0).sort((a,b)=> a[1]-b[1] || a[0].localeCompare(b[0])); // more negative last? keep natural
+        const ordered = positives.concat(negatives);
+        const maxAbs = ordered.reduce((m,[,v])=> Math.max(m, Math.abs(v)), 0) || 1;
+        el.balancesList.innerHTML = ordered.map(([pid, minor]) => balanceRowHTML(pid, minor, maxAbs)).join('');
+        el.balancesList.style.display = 'flex';
+      } else {
+        el.balancesList.innerHTML = '';
+        el.balancesList.style.display = 'none';
+      }
+      if (el.balanceChart) { // hide old chart permanently
+        el.balanceChart.innerHTML = '';
+        el.balanceChart.hidden = true;
+      }
+      if (el.noBalancesHint) {
+        el.noBalancesHint.style.display = entries.length ? 'none' : 'block';
+      }
+    }
+    if (el.settlementsList) {
+      const settlements = state.settlements;
+      el.settlementsList.innerHTML = settlements.map(s => settlementListItemHTML(s)).join('');
+      el.settlementsList.style.display = settlements.length ? 'flex' : 'none';
+      if (el.noSettlementsHint) {
+        el.noSettlementsHint.style.display = settlements.length ? 'none' : 'block';
+      }
+    }
+    if (el.completedSettlementsList) {
+      const items = state.recordedSettlements.slice().sort((a,b)=> a.createdAt - b.createdAt);
+      el.completedSettlementsList.innerHTML = items.map(s => completedSettlementListItemHTML(s)).join('');
+      if (el.noCompletedSettlementsHint) {
+        el.noCompletedSettlementsHint.style.display = items.length ? 'none' : 'block';
+      }
+    }
   }
 
+  // Toast helper (injected near end of file original scope)
+  function showToast(message, variant='default', ttl=2600) {
+    if (!el.toastStack) return;
+    const div = document.createElement('div');
+    div.className = 'toast' + (variant && variant !== 'default' ? ' ' + variant : '');
+    div.innerHTML = `<span style="flex:1;">${escapeHtml(message)}</span><button aria-label="Close" onclick="this.parentElement.dispatchEvent(new Event('toast-close'))">×</button>`;
+    const remove = () => {
+      div.style.animation = 'toastOut .25s forwards';
+      setTimeout(() => { if (div.parentNode) div.parentNode.removeChild(div); }, 230);
+    };
+    div.addEventListener('toast-close', remove, { once:true });
+    el.toastStack.appendChild(div);
+    setTimeout(remove, ttl);
+  }
+
+  // Monkey patch CRUD broadcasts if not already patched (idempotent safety)
+  if (typeof broadcastExpense === 'function' && !broadcastExpense.__withToast) {
+    const _origAdd = broadcastExpense;
+    broadcastExpense = function(expense) { _origAdd(expense); showToast('Expense added','success'); };
+    broadcastExpense.__withToast = true;
+  }
+  if (typeof broadcastExpenseEdit === 'function' && !broadcastExpenseEdit.__withToast) {
+    const _origEdit = broadcastExpenseEdit;
+    broadcastExpenseEdit = function(expense) { _origEdit(expense); showToast('Expense updated','success'); };
+    broadcastExpenseEdit.__withToast = true;
+  }
+  if (typeof broadcastExpenseDelete === 'function' && !broadcastExpenseDelete.__withToast) {
+    const _origDel = broadcastExpenseDelete;
+    broadcastExpenseDelete = function(expense) { _origDel(expense); showToast('Expense deleted','warn'); };
+    broadcastExpenseDelete.__withToast = true;
+  }
+
+  // ------------------------------
+  // Sheet Logic
+  // ------------------------------
+  const sheet = {
+    backdrop: document.getElementById('expense-sheet-backdrop'),
+    panel: document.getElementById('expense-sheet'),
+    closeBtn: document.getElementById('sheet-close'),
+    cancelBtn: document.getElementById('sheet-cancel'),
+    form: document.getElementById('expense-form'),
+    title: document.getElementById('sheet-title')
+  };
+
+  const participantsSheet = {
+    backdrop: document.getElementById('participants-sheet-backdrop'),
+    panel: document.getElementById('participants-sheet'),
+    closeBtn: document.getElementById('participants-sheet-close'),
+  };
+
+  function openExpenseSheet(mode='add') {
+    if (sheet.backdrop) sheet.backdrop.hidden = false;
+    requestAnimationFrame(()=>{
+      sheet.backdrop?.classList.add('is-open');
+      sheet.panel?.classList.add('is-open');
+    });
+    sheet.panel?.setAttribute('aria-hidden','false');
+    // Initialize default date (today) for add mode if empty
+    if (mode === 'add' && el.expenseDate) {
+      const today = new Date();
+      const iso = today.toISOString().slice(0,10);
+      el.expenseDate.max = iso; // prevent future dates for now
+      if (!el.expenseDate.value) el.expenseDate.value = iso;
+    }
+    // Preselect payer: lastSelectedPayerId if still active, else blank
+    if (el.payerSelect) {
+      const optsIds = Array.from(el.payerSelect.options).map(o=>o.value);
+      if (state.lastSelectedPayerId && optsIds.includes(state.lastSelectedPayerId)) {
+        el.payerSelect.value = state.lastSelectedPayerId;
+      } else {
+        el.payerSelect.value = '';
+      }
+    }
+    // focus title field
+    setTimeout(()=>{ el.expenseTitle && el.expenseTitle.focus(); }, 60);
+  }
+  function closeExpenseSheet() {
+    sheet.backdrop?.classList.remove('is-open');
+    sheet.panel?.classList.remove('is-open');
+    sheet.panel?.setAttribute('aria-hidden','true');
+    setTimeout(()=>{ if (sheet.backdrop) sheet.backdrop.hidden = true; }, 280);
+  }
+  window.__openExpenseSheet = openExpenseSheet;
+
+  function openParticipantsSheet() {
+    renderParticipantsSheet();
+    if (participantsSheet.backdrop) participantsSheet.backdrop.hidden = false;
+    requestAnimationFrame(() => {
+      participantsSheet.backdrop?.classList.add('is-open');
+      participantsSheet.panel?.classList.add('is-open');
+    });
+    participantsSheet.panel?.setAttribute('aria-hidden', 'false');
+    resetParticipantEditor();
+    setTimeout(() => {
+      el.participantsSheetAddBtn && el.participantsSheetAddBtn.focus();
+    }, 80);
+  }
+
+  function closeParticipantsSheet() {
+    participantsSheet.backdrop?.classList.remove('is-open');
+    participantsSheet.panel?.classList.remove('is-open');
+    participantsSheet.panel?.setAttribute('aria-hidden', 'true');
+    setTimeout(() => {
+      if (participantsSheet.backdrop) participantsSheet.backdrop.hidden = true;
+      resetParticipantEditor();
+    }, 280);
+  }
+  window.__openParticipantsSheet = openParticipantsSheet;
+
+  // Hook close events
+  sheet.backdrop && sheet.backdrop.addEventListener('click', (e)=>{ if (e.target === sheet.backdrop) closeExpenseSheet(); });
+  sheet.closeBtn && sheet.closeBtn.addEventListener('click', closeExpenseSheet);
+  sheet.cancelBtn && sheet.cancelBtn.addEventListener('click', closeExpenseSheet);
+  participantsSheet.backdrop && participantsSheet.backdrop.addEventListener('click', (e)=>{ if (e.target === participantsSheet.backdrop) closeParticipantsSheet(); });
+  participantsSheet.closeBtn && participantsSheet.closeBtn.addEventListener('click', closeParticipantsSheet);
+  document.addEventListener('keydown', (e)=>{
+    if (e.key !== 'Escape') return;
+    if (participantsSheet.panel?.classList.contains('is-open')) {
+      closeParticipantsSheet();
+      return;
+    }
+    if (sheet.panel?.classList.contains('is-open')) {
+      closeExpenseSheet();
+    }
+  });
+
+  // Intercept form submit to close sheet after existing logic
+  if (sheet.form) {
+    sheet.form.addEventListener('submit', () => {
+      closeExpenseSheet();
+    });
+  }
+
+  // ...rest of existing code remains (grouping, event wiring, etc.)
+
+  // ------------------------------------------------------------
+  // Missing Helper Implementations (re-added after refactor)
+  // ------------------------------------------------------------
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+  }
+
+  function formatAmountStrict(minor, currency='EUR') {
+    const sign = minor < 0 ? '-' : '';
+    const abs = Math.abs(minor);
+    return sign + (abs/100).toFixed(2) + ' ' + currency;
+  }
+
+  function formatAmountDisplay(minor, currency = activeCurrency()) {
+    const code = (currency || DEFAULT_CURRENCY).toUpperCase();
+    const raw = formatAmountStrict(minor, code);
+    const symbol = currencySymbols[code];
+    if (!symbol) return raw;
+    return raw.replace(` ${code}`, ` ${symbol}`);
+  }
+
+  function groupExpensesForDisplay(items) {
+    const sections = [];
+    const byDay = new Map();
+    items.forEach(e => {
+      const d = new Date(e.createdAt || 0);
+      const key = d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key).push(e);
+    });
+    const todayKey = (()=>{ const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');})();
+    const yesterdayKey = (()=>{ const d=new Date(Date.now()-86400000);return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');})();
+    const keys = Array.from(byDay.keys()).sort((a,b)=> b.localeCompare(a));
+    keys.forEach(k => {
+      let label;
+      if (k === todayKey) label = 'Today'; else if (k === yesterdayKey) label = 'Yesterday'; else label = k;
+      sections.push({ label, items: byDay.get(k).sort((a,b)=> b.createdAt - a.createdAt) });
+    });
+    return sections;
+  }
+
+  function expenseCardHTML(exp) {
+    const payerName = resolveParticipantName(exp.payer) || exp.payer;
+    const you = payerName === state.actorName ? 'you' : payerName;
+    const visual = expenseVisualFor(exp);
+    const amountText = escapeHtml(formatAmountDisplay(exp.amountMinor, exp.currency || activeCurrency()));
+    const deleteLabel = `Delete expense ${exp.description || ''}`.trim() || 'Delete expense';
+    return `<li class="expense-card" data-expense-id="${escapeHtml(exp.id)}">
+      <div class="expense-card-main">
+        <span class="expense-icon" style="background:${visual.background};color:${visual.color};">${escapeHtml(visual.glyph)}</span>
+        <div class="expense-body">
+          <p class="expense-title">${escapeHtml(exp.description || '(no title)')}</p>
+          <p class="expense-subtitle">Paid by ${escapeHtml(you)}</p>
+        </div>
+      </div>
+      <div class="expense-meta">
+        <div class="expense-amount">${amountText}</div>
+        <button type="button" class="expense-trash" aria-label="${escapeHtml(deleteLabel)}" data-action="delete" data-id="${escapeHtml(exp.id)}" tabindex="-1">🗑</button>
+      </div>
+    </li>`;
+  }
+
+  function balanceListItemHTML(name, minor) {
+    const resolved = resolveParticipantName(name) || name;
+    const amt = formatAmountDisplay(minor);
+    const display = minor > 0 && !amt.startsWith('+') ? '+' + amt : amt;
+    const direction = minor >= 0 ? 'is-positive' : 'is-negative';
+    const amountClass = minor >= 0 ? 'balance-amount positive' : 'balance-amount negative';
+    return `<li class="balance-item ${direction}"><span class="balance-name">${escapeHtml(resolved)}</span><span class="${amountClass}">${escapeHtml(display)}</span></li>`;
+  }
+
+  function settlementListItemHTML(s) {
+    const amt = formatAmountDisplay(s.amountMinor);
+    const fromName = resolveParticipantName(s.from) || s.from;
+    const toName = resolveParticipantName(s.to) || s.to;
+    const actionLabel = 'Record';
+    return `<li class="settlement-item" data-from="${escapeHtml(s.from)}" data-to="${escapeHtml(s.to)}" data-amt="${s.amountMinor}">
+      <span class="settlement-route">${escapeHtml(fromName)} → ${escapeHtml(toName)}</span>
+      <strong class="settlement-amount">${escapeHtml(amt)}</strong>
+      <button type="button" class="record-settlement-btn" data-action="record" aria-label="Record settlement">${escapeHtml(actionLabel)}</button>
+    </li>`;
+  }
+
+  function completedSettlementListItemHTML(s) {
+    const amt = formatAmountDisplay(s.amountMinor);
+    const fromName = resolveParticipantName(s.from) || s.from;
+    const toName = resolveParticipantName(s.to) || s.to;
+    return `<li class="completed-settlement-item">${escapeHtml(fromName)} → ${escapeHtml(toName)} <strong style="float:right;">${escapeHtml(amt)}</strong></li>`;
+  }
+
+  const iconThemeCatalog = [
+    { keywords: ['food','meal','dinner','lunch','pizza','restaurant','snack'], glyph: '🍽️', background: 'linear-gradient(135deg,#FFE6B5,#FFBD6F)', color: '#5b3600' },
+    { keywords: ['coffee','drink','bar','beer','wine','tea'], glyph: '🍹', background: 'linear-gradient(135deg,#FFD5E5,#FF91C1)', color: '#8f1f49' },
+    { keywords: ['travel','flight','train','bus','uber','plane','trip'], glyph: '✈️', background: 'linear-gradient(135deg,#B3E5FF,#4FB9F4)', color: '#0b3a55' },
+    { keywords: ['hotel','stay','bnb','room','apartment'], glyph: '🏨', background: 'linear-gradient(135deg,#D2C6FF,#9A8CFF)', color: '#3d2d86' },
+    { keywords: ['grocer','market','supermarket','store','shopping'], glyph: '🛒', background: 'linear-gradient(135deg,#C2F5D0,#5BD49A)', color: '#176644' },
+    { keywords: ['fuel','gas','petrol','diesel'], glyph: '⛽️', background: 'linear-gradient(135deg,#F6D4B1,#F19F5A)', color: '#8a3d07' },
+    { keywords: ['gift','present','birthday','wedding'], glyph: '🎁', background: 'linear-gradient(135deg,#FFD9F2,#FF9DDD)', color: '#7a2a62' },
+    { keywords: ['ticket','movie','cinema','concert','show'], glyph: '🎟️', background: 'linear-gradient(135deg,#FBE7C6,#F7C59F)', color: '#6a4720' }
+  ];
+
+  function expenseVisualFor(exp) {
+    const title = (exp.description || '').toLowerCase();
+    const theme = iconThemeCatalog.find(entry => entry.keywords.some(word => title.includes(word)));
+    if (theme) {
+      return theme;
+    }
+    const accent = accentFromString(title || exp.id);
+    return {
+      glyph: initialsFor(exp.description || ''),
+      background: accent.background,
+      color: accent.color,
+    };
+  }
+
+  function initialsFor(str) {
+    const cleaned = String(str).trim();
+    if (!cleaned) return '€';
+    const parts = cleaned.split(/\s+/).filter(Boolean).slice(0, 2);
+    const letters = parts.map(part => part[0].toUpperCase()).join('');
+    return letters || cleaned[0].toUpperCase() || '€';
+  }
+
+  function accentFromString(input) {
+    const hue = Math.abs(hashString(input || '')) % 360;
+    const light = `hsla(${hue}, 70%, 86%, 1)`;
+    const dark = `hsla(${hue}, 70%, 66%, 1)`;
+    const text = `hsla(${hue}, 55%, 28%, 1)`;
+    return {
+      background: `linear-gradient(135deg, ${light}, ${dark})`,
+      color: text,
+    };
+  }
+
+  function hashString(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0; // Convert to 32bit integer
+    }
+    return hash;
+  }
+
+  function renderBalanceChart(entries) {
+    if (!el.balanceChart) return;
+    if (!entries.length) {
+      el.balanceChart.innerHTML = '';
+      el.balanceChart.setAttribute('hidden', 'true');
+      el.balanceChart.setAttribute('aria-hidden', 'true');
+      return;
+    }
+    el.balanceChart.removeAttribute('hidden');
+    el.balanceChart.setAttribute('aria-hidden', 'false');
+    const max = entries.reduce((acc, [, minor]) => Math.max(acc, Math.abs(minor)), 0);
+    const rows = entries.map(entry => balanceBarHTML(entry[0], entry[1], max)).join('');
+    el.balanceChart.innerHTML = rows;
+  }
+
+  function balanceBarHTML(name, minor, max) {
+  const base = formatAmountDisplay(minor);
+  const amountText = minor > 0 && !base.startsWith('+') ? '+' + base : base;
+    const dir = minor >= 0 ? 'positive' : 'negative';
+    const percent = max === 0 ? 0 : Math.round(Math.abs(minor) / max * 100);
+    const width = Math.min(100, Math.max(8, percent));
+    return `<div class="balance-bar" data-direction="${dir}">
+      <div class="balance-avatar">${escapeHtml(initialsFor(name))}</div>
+      <div class="balance-track"><div class="balance-fill is-${dir}" style="width:${width}%;"></div></div>
+      <div class="balance-amount ${dir === 'positive' ? 'positive' : 'negative'}">${escapeHtml(amountText)}</div>
+    </div>`;
+  }
+
+  function balanceRowHTML(id, minor, maxAbs) {
+    const name = resolveParticipantName(id) || id;
+    const amountTextRaw = formatAmountDisplay(minor);
+    const amountText = minor > 0 && !amountTextRaw.startsWith('+') ? '+' + amountTextRaw : amountTextRaw;
+    const pct = Math.round(Math.abs(minor)/maxAbs*100);
+    const width = Math.min(100, Math.max(4, pct));
+    const dir = minor >= 0 ? 'pos' : 'neg';
+    return `<li class="balance-row" data-dir="${dir}">
+      <span class="balance-row-name">${escapeHtml(name)}</span>
+      <span class="balance-row-bar"><span class="balance-row-fill ${dir}" style="width:${width}%;"></span></span>
+      <span class="balance-row-amount ${dir}">${escapeHtml(amountText)}</span>
+    </li>`;
+  }
+
+  function normalizeParticipant(entry) {
+    if (!entry || !entry.id) return null;
+    const displayName = (entry.displayName || '').trim();
+    return {
+      id: String(entry.id),
+      displayName: displayName || 'Participant',
+      origin: entry.origin || 'external',
+      archived: entry.archived === true,
+      createdAt: entry.createdAt || Date.now(),
+      createdBy: entry.createdBy || state.clientId,
+      lastModifiedAt: entry.lastModifiedAt || Date.now(),
+      lastModifiedBy: entry.lastModifiedBy || state.clientId,
+      color: entry.color,
+    };
+  }
+
+  function upsertParticipantFromEvent(entry) {
+    const normalized = normalizeParticipant(entry);
+    if (!normalized) return;
+    const existing = state.participants.get(normalized.id) || {};
+    state.participants.set(normalized.id, { ...existing, ...normalized });
+    updateLocalParticipantReference();
+    refreshSplitConfigUI();
+    syncOnboardingDraftFromState();
+    markOnboardingCompletedIfReady();
+    removeOnboardingIfCompleted();
+  }
+
+  function editParticipantFromEvent(entry) {
+    const normalized = normalizeParticipant(entry);
+    if (!normalized) return;
+    const existing = state.participants.get(normalized.id);
+    if (!existing) return;
+    if (existing.origin !== 'external') return; // respect rules
+    state.participants.set(normalized.id, { ...existing, ...normalized });
+    updateLocalParticipantReference();
+    refreshSplitConfigUI();
+    syncOnboardingDraftFromState();
+    markOnboardingCompletedIfReady();
+    removeOnboardingIfCompleted();
+  }
+
+  function archiveParticipantFromEvent(entry) {
+    const normalized = normalizeParticipant(entry);
+    if (!normalized) return;
+    const existing = state.participants.get(normalized.id);
+    if (!existing) return;
+    if (existing.origin !== 'external') return;
+    state.participants.set(normalized.id, { ...existing, archived: true, lastModifiedAt: normalized.lastModifiedAt, lastModifiedBy: normalized.lastModifiedBy });
+    updateLocalParticipantReference();
+    refreshSplitConfigUI();
+    syncOnboardingDraftFromState();
+    markOnboardingCompletedIfReady();
+    removeOnboardingIfCompleted();
+  }
+
+  function applyMetaPatch(meta) {
+    if (!meta || typeof meta !== 'object') return;
+    if (typeof meta.title === 'string') {
+      state.meta.title = meta.title.trim();
+    }
+    if (typeof meta.currency === 'string' && meta.currency.trim()) {
+      state.meta.currency = meta.currency.trim().toUpperCase();
+    }
+    if (Array.isArray(meta.participants)) {
+      syncParticipantsFromList(meta.participants);
+    } else {
+      updateLocalParticipantReference();
+      refreshSplitConfigUI();
+    }
+    syncOnboardingDraftFromState();
+    markOnboardingCompletedIfReady();
+    removeOnboardingIfCompleted();
+  }
+
+  function syncParticipantsFromList(list) {
+    const map = new Map();
+    list.forEach(entry => {
+      const normalized = normalizeParticipant(entry);
+      if (!normalized) return;
+      map.set(normalized.id, normalized);
+    });
+    state.participants = map;
+    updateLocalParticipantReference();
+    refreshSplitConfigUI();
+    markOnboardingCompletedIfReady();
+  }
+
+  function activeParticipants() {
+    return Array.from(state.participants.values()).filter(p => !p.archived);
+  }
+
+  function updateLocalParticipantReference() {
+    const active = activeParticipants();
+    if (!active.length) {
+      state.localParticipantId = null;
+      return;
+    }
+    if (state.localParticipantId && active.some(p => p.id === state.localParticipantId)) {
+      return;
+    }
+    const matchByActor = active.find(p => p.displayName === state.actorName);
+    state.localParticipantId = (matchByActor || active[0]).id;
+  }
+
+  function syncOnboardingDraftFromState() {
+    state.onboardingDraft.title = state.meta.title || '';
+    state.onboardingDraft.currency = activeCurrency();
+    state.onboardingDraft.participants = activeParticipants().map(p => ({
+      id: p.id,
+      displayName: p.displayName,
+      createdAt: p.createdAt,
+      createdBy: p.createdBy,
+    }));
+  }
+
+  function markOnboardingCompletedIfReady() {
+    if (state.onboardingCompleted) return;
+    const hasTitle = Boolean(state.meta.title && state.meta.title.trim());
+    const hasParticipants = activeParticipants().length > 0;
+    if (hasTitle && hasParticipants) {
+      state.onboardingCompleted = true;
+    }
+  }
+
+  function removeOnboardingIfCompleted() {
+    if (!state.onboardingCompleted) return;
+    if (el.onboardingScreen && el.onboardingScreen.parentNode) {
+      el.onboardingScreen.parentNode.removeChild(el.onboardingScreen);
+      console.debug('[onboarding-sync] removed onboarding screen after replay/meta patch');
+      el.onboardingScreen = null;
+      document.body.classList.remove('is-onboarding');
+    }
+  }
+
+  function cleanName(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function nameAlreadyExists(name, excludeId = null) {
+    const cleaned = cleanName(name);
+    if (!cleaned) return false;
+    const lower = cleaned.toLowerCase();
+    return Array.from(state.participants.values()).some(p => p.id !== excludeId && p.displayName.toLowerCase() === lower);
+  }
+
+  function createParticipantPayload(name) {
+    const cleaned = cleanName(name) || 'Participant';
+    const accent = accentFromString(cleaned);
+    return {
+      id: randomId(),
+      displayName: cleaned,
+      origin: 'external',
+      archived: false,
+      createdAt: Date.now(),
+      createdBy: state.clientId,
+      lastModifiedAt: Date.now(),
+      lastModifiedBy: state.clientId,
+      color: accent.background,
+    };
+  }
+
+  function renderParticipantsSheet() {
+    if (!el.participantsSheetList) return;
+    const participants = Array.from(state.participants.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
+    const active = participants.filter(p => !p.archived);
+    const archived = participants.filter(p => p.archived);
+
+    el.participantsSheetList.innerHTML = active.map(p => participantManagerItemHTML(p)).join('');
+    if (el.participantsSheetEmpty) {
+      el.participantsSheetEmpty.style.display = active.length ? 'none' : 'block';
+    }
+    if (el.participantsActiveCount) {
+      el.participantsActiveCount.textContent = String(active.length);
+    }
+
+    if (el.participantsArchivedSection) {
+      el.participantsArchivedSection.hidden = archived.length === 0;
+    }
+    if (el.participantsArchivedList) {
+      el.participantsArchivedList.innerHTML = archived.map(p => participantManagerItemHTML(p, { archived: true })).join('');
+    }
+    if (el.participantsArchivedEmpty) {
+      el.participantsArchivedEmpty.style.display = archived.length ? 'none' : 'block';
+    }
+    if (el.participantsArchivedCount) {
+      el.participantsArchivedCount.textContent = String(archived.length);
+    }
+
+    if (ui.participantEditorMode === 'edit' && ui.editingParticipantId) {
+      const editing = state.participants.get(ui.editingParticipantId);
+      if (!editing) {
+        resetParticipantEditor();
+      } else if (el.participantEditorInput && el.participantEditor && !el.participantEditor.hidden) {
+        el.participantEditorInput.value = editing.displayName;
+      }
+    }
+  }
+
+  function participantManagerItemHTML(participant, opts = {}) {
+    const archived = opts.archived === true ? true : participant.archived === true;
+    const accent = accentFromString(participant.displayName || participant.id);
+    const initials = initialsFor(participant.displayName);
+    const badge = participant.id === state.localParticipantId ? '<span class="participant-row-badge">You</span>' : '';
+    const actionButtons = archived
+      ? `<button type="button" class="ghost-btn" data-action="restore" data-id="${escapeHtml(participant.id)}">Restore</button>
+        <button type="button" class="ghost-btn" data-action="rename" data-id="${escapeHtml(participant.id)}">Rename</button>`
+      : `<button type="button" class="ghost-btn" data-action="rename" data-id="${escapeHtml(participant.id)}">Rename</button>
+        <button type="button" class="ghost-btn danger" data-action="archive" data-id="${escapeHtml(participant.id)}">Archive</button>`;
+    return `<li class="participant-row" data-id="${escapeHtml(participant.id)}">
+      <div class="participant-row-main">
+        <div class="participant-avatar" style="background:${accent.background};color:${accent.color};">${escapeHtml(initials)}</div>
+        <div class="participant-row-text">
+          <span class="participant-row-name">${escapeHtml(participant.displayName)}</span>
+          ${badge}
+        </div>
+      </div>
+      <div class="participant-row-actions">
+        ${actionButtons}
+      </div>
+    </li>`;
+  }
+
+  function showParticipantEditor(mode, participantId) {
+    if (!el.participantEditor) return;
+    ui.participantEditorMode = mode;
+    ui.editingParticipantId = mode === 'edit' ? participantId : null;
+    el.participantEditor.hidden = false;
+    el.participantEditor.setAttribute('data-mode', mode);
+    if (mode === 'edit' && participantId) {
+      const existing = state.participants.get(participantId);
+      if (existing && el.participantEditorInput) {
+        el.participantEditorInput.value = existing.displayName;
+      }
+    } else if (el.participantEditorInput) {
+      el.participantEditorInput.value = '';
+    }
+    if (el.participantEditorSubmit) {
+      el.participantEditorSubmit.textContent = mode === 'edit' ? 'Save changes' : 'Add';
+    }
+    requestAnimationFrame(() => {
+      if (el.participantEditorInput) {
+        el.participantEditorInput.focus();
+        if (mode === 'edit') {
+          el.participantEditorInput.select();
+        }
+      }
+    });
+  }
+
+  function resetParticipantEditor() {
+    ui.participantEditorMode = 'idle';
+    ui.editingParticipantId = null;
+    if (el.participantEditor) {
+      el.participantEditor.hidden = true;
+      el.participantEditor.removeAttribute('data-mode');
+    }
+    if (el.participantEditorInput) {
+      el.participantEditorInput.value = '';
+    }
+    if (el.participantEditorSubmit) {
+      el.participantEditorSubmit.textContent = 'Add';
+    }
+  }
+
+  function handleParticipantEditorSubmit(event) {
+    event.preventDefault();
+    if (!el.participantEditorInput) return;
+    const name = cleanName(el.participantEditorInput.value);
+    if (!name) {
+      showToast('Enter a participant name', 'warn');
+      el.participantEditorInput.focus();
+      return;
+    }
+    const excludeId = ui.participantEditorMode === 'edit' ? ui.editingParticipantId : null;
+    if (nameAlreadyExists(name, excludeId)) {
+      showToast('That name is already in use', 'warn');
+      el.participantEditorInput.focus();
+      el.participantEditorInput.select();
+      return;
+    }
+
+    if (ui.participantEditorMode === 'edit' && ui.editingParticipantId) {
+      const existing = state.participants.get(ui.editingParticipantId);
+      if (!existing) {
+        showToast('Participant not found', 'error');
+        resetParticipantEditor();
+        renderParticipantsSheet();
+        return;
+      }
+      const payload = {
+        ...existing,
+        displayName: name,
+        lastModifiedAt: Date.now(),
+        lastModifiedBy: state.clientId,
+      };
+      editParticipantFromEvent(payload);
+      render();
+      broadcastParticipantEdit(payload);
+      showToast('Participant updated', 'success');
+    } else {
+      const payload = createParticipantPayload(name);
+      upsertParticipantFromEvent(payload);
+      render();
+      broadcastParticipantAdd(payload);
+      showToast('Participant added', 'success');
+    }
+    resetParticipantEditor();
+  }
+
+  function handleParticipantListAction(event) {
+    const btn = event.target && event.target.closest && event.target.closest('[data-action][data-id]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    const id = btn.getAttribute('data-id');
+    if (!action || !id) return;
+    if (action === 'rename') {
+      showParticipantEditor('edit', id);
+    } else if (action === 'archive') {
+      archiveParticipant(id);
+    } else if (action === 'restore') {
+      restoreParticipant(id);
+    }
+  }
+
+  function archiveParticipant(id) {
+    const participant = state.participants.get(id);
+    if (!participant || participant.archived) return;
+    const active = activeParticipants();
+    if (active.length <= 1) {
+      showToast('Keep at least one participant active', 'warn');
+      return;
+    }
+    const payload = {
+      ...participant,
+      archived: true,
+      lastModifiedAt: Date.now(),
+      lastModifiedBy: state.clientId,
+    };
+    archiveParticipantFromEvent(payload);
+    render();
+    broadcastParticipantArchive(payload);
+    showToast('Participant archived', 'warn');
+  }
+
+  function restoreParticipant(id) {
+    const participant = state.participants.get(id);
+    if (!participant || !participant.archived) return;
+    const payload = {
+      ...participant,
+      archived: false,
+      lastModifiedAt: Date.now(),
+      lastModifiedBy: state.clientId,
+    };
+    editParticipantFromEvent(payload);
+    render();
+    broadcastParticipantEdit(payload);
+    showToast('Participant restored', 'success');
+  }
+
+  function ensureCurrencyOption(code) {
+    if (!el.onboardingCurrencySelect) return;
+    const exists = Array.from(el.onboardingCurrencySelect.options || []).some(opt => opt.value === code);
+    if (!exists) {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = code;
+      el.onboardingCurrencySelect.appendChild(opt);
+    }
+  }
+
+  function renderOnboarding(isActive) {
+    if (!el.onboardingScreen || !isActive) {
+      updateOnboardingStartState();
+      return;
+    }
+    if (el.onboardingTitleInput && el.onboardingTitleInput.value !== state.onboardingDraft.title) {
+      el.onboardingTitleInput.value = state.onboardingDraft.title;
+    }
+    const currency = state.onboardingDraft.currency || DEFAULT_CURRENCY;
+    ensureCurrencyOption(currency);
+    if (el.onboardingCurrencySelect && el.onboardingCurrencySelect.value !== currency) {
+      el.onboardingCurrencySelect.value = currency;
+    }
+    renderOnboardingParticipants();
+    updateOnboardingStartState();
+  }
+
+  function renderOnboardingParticipants() {
+    if (!el.onboardingParticipantChips) return;
+    if (!state.onboardingDraft.participants.length) {
+      el.onboardingParticipantChips.innerHTML = '<p class="onboarding-empty">Add at least one participant.</p>';
+      return;
+    }
+    const chips = state.onboardingDraft.participants.map(p => `
+      <div class="onboarding-chip" role="listitem">
+        <span>${escapeHtml(p.displayName)}</span>
+        <button type="button" class="onboarding-chip-remove" data-remove-participant="${escapeHtml(p.id)}" aria-label="Remove ${escapeHtml(p.displayName)}">×</button>
+      </div>
+    `).join('');
+    el.onboardingParticipantChips.innerHTML = chips;
+  }
+
+  function onboardingIsValid() {
+    return cleanName(state.onboardingDraft.title).length > 0 && state.onboardingDraft.participants.length > 0;
+  }
+
+  function updateOnboardingStartState() {
+    if (!el.onboardingStartBtn) return;
+    el.onboardingStartBtn.disabled = !onboardingIsValid();
+  }
+
+  function handleOnboardingAddParticipant() {
+    if (!el.onboardingParticipantInput) return;
+    const name = cleanName(el.onboardingParticipantInput.value);
+    if (!name) {
+      showToast('Enter a participant name','warn');
+      return;
+    }
+    const exists = state.onboardingDraft.participants.some(p => p.displayName.toLowerCase() === name.toLowerCase());
+    if (exists) {
+      showToast('That participant is already added','warn');
+      return;
+    }
+    state.onboardingDraft.participants.push({
+      id: randomId(),
+      displayName: name,
+      createdAt: Date.now(),
+      createdBy: state.clientId,
+    });
+    if (el.onboardingParticipantInput) {
+      el.onboardingParticipantInput.value = '';
+      el.onboardingParticipantInput.focus();
+    }
+    renderOnboardingParticipants();
+    updateOnboardingStartState();
+  }
+
+  function handleOnboardingRemoveParticipant(id) {
+    if (!id) return;
+    state.onboardingDraft.participants = state.onboardingDraft.participants.filter(p => p.id !== id);
+    renderOnboardingParticipants();
+    updateOnboardingStartState();
+    if (el.onboardingParticipantInput) {
+      el.onboardingParticipantInput.focus();
+    }
+  }
+
+  function buildMetaParticipantsPayload(list) {
+    return list.map(p => ({
+      id: p.id,
+      displayName: p.displayName,
+      origin: 'external',
+      createdAt: p.createdAt || Date.now(),
+      createdBy: p.createdBy || state.clientId,
+    }));
+  }
+
+  function handleOnboardingStart() {
+    console.debug('[onboarding] handleOnboardingStart invoked');
+    const title = cleanName(el.onboardingTitleInput ? el.onboardingTitleInput.value : state.onboardingDraft.title);
+    state.onboardingDraft.title = title;
+    const currency = (el.onboardingCurrencySelect ? el.onboardingCurrencySelect.value : state.onboardingDraft.currency || DEFAULT_CURRENCY) || DEFAULT_CURRENCY;
+    state.onboardingDraft.currency = currency;
+    if (!onboardingIsValid()) {
+      updateOnboardingStartState();
+      showToast('Add a title and at least one participant','warn');
+      console.debug('[onboarding] invalid: title="'+title+'" participants='+state.onboardingDraft.participants.length);
+      return;
+    }
+    const payload = {
+      title,
+      currency,
+      participants: buildMetaParticipantsPayload(state.onboardingDraft.participants),
+    };
+    state.onboardingCompleted = true;
+  console.debug('[onboarding] start clicked -> marking completed, payload', payload);
+    applyMetaPatch(payload);
+    recomputeBalances();
+    recomputeSettlements();
+    render();
+    updateSubtitle();
+    broadcastMetaPatch(payload);
+    // Failsafe second render if race w/ replay
+    requestAnimationFrame(()=>{
+      if (state.onboardingCompleted) {
+        removeOnboardingIfCompleted();
+      }
+    });
+  }
+
+  // Global fallback to ensure button works even if listener missed
+  window.__startTracking = function(){
+    console.debug('[onboarding] global __startTracking called');
+    handleOnboardingStart();
+  };
+
+  // updateReimburseCallout removed (callout deprecated)
+
+  // --- Settlement Sheet Logic ---
+  function openSettlementSheet(preset) {
+    // preset: { from, to, amountMinor }
+    if (!el.settlementSheet) return;
+    // Populate participant selects
+    populateSettlementParticipantOptions();
+    const parts = activeParticipants();
+    const fromSel = el.settlementFromSelect;
+    const toSel = el.settlementToSelect;
+    if (preset && preset.from && parts.find(p=>p.id===preset.from)) {
+      fromSel.value = preset.from;
+    } else if (parts.length>=2) {
+      fromSel.value = parts[0].id;
+    }
+    if (preset && preset.to && parts.find(p=>p.id===preset.to)) {
+      toSel.value = preset.to;
+    } else if (parts.length>=2) {
+      toSel.value = parts[1].id === fromSel.value && parts.length>2 ? parts[2].id : parts[1].id;
+    }
+    // Amount
+    if (el.settlementAmountInput) {
+      const amt = preset && preset.amountMinor ? (preset.amountMinor/100).toFixed(2) : '';
+      el.settlementAmountInput.value = amt;
+    }
+    if (el.settlementCurrencySpan) {
+      el.settlementCurrencySpan.textContent = activeCurrency();
+    }
+    // Show sheet
+    el.settlementSheetBackdrop.hidden = false;
+    el.settlementSheet.removeAttribute('aria-hidden');
+    el.settlementSheet.classList.add('is-open');
+    // Focus amount for quick edit
+    if (el.settlementAmountInput) {
+      requestAnimationFrame(()=> el.settlementAmountInput.focus());
+    }
+  }
+
+  function closeSettlementSheet() {
+    if (!el.settlementSheet) return;
+    el.settlementSheet.setAttribute('aria-hidden','true');
+    el.settlementSheet.classList.remove('is-open');
+    if (el.settlementSheetBackdrop) el.settlementSheetBackdrop.hidden = true;
+  }
+
+  function populateSettlementParticipantOptions() {
+    const participants = activeParticipants();
+    const optsHtml = participants.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.displayName)}</option>`).join('');
+    if (el.settlementFromSelect) el.settlementFromSelect.innerHTML = optsHtml;
+    if (el.settlementToSelect) el.settlementToSelect.innerHTML = optsHtml;
+  }
+
+  function submitSettlementForm(e) {
+    if (e) e.preventDefault();
+    if (!el.settlementFromSelect || !el.settlementToSelect || !el.settlementAmountInput) return;
+    const from = el.settlementFromSelect.value;
+    const to = el.settlementToSelect.value;
+    if (!from || !to || from === to) {
+      showToast('Choose two different participants','warn');
+      return;
+    }
+    const raw = el.settlementAmountInput.value.trim();
+    if (!raw) {
+      showToast('Enter an amount','warn');
+      return;
+    }
+    const amountMinor = Math.round(Number(raw)*100);
+    if (!(amountMinor > 0)) {
+      showToast('Amount must be > 0','warn');
+      return;
+    }
+    // Optional: limit to existing debtor balance (soft)
+    const balances = computeBalancesSnapshot();
+    const balFrom = balances.get(from) || 0; // positive means owed to them; negative means they owe
+    if (balFrom >= 0) {
+      // from isn't a debtor in current snapshot
+      // Allow anyway but warn
+      console.debug('[settlement] from participant not currently debtor (balance='+balFrom+')');
+    }
+    recordSettlement(from,to,amountMinor);
+    showToast('Settlement recorded','success');
+    closeSettlementSheet();
+    render();
+  }
+
+  function computeBalancesSnapshot() {
+    // Lightweight recompute (mirrors recomputeBalances but returns map only)
+    const map = new Map();
+    state.expenses.forEach(exp => {
+      if (exp.deleted) return;
+      addBalance(map, exp.payer, exp.amountMinor);
+      exp.splits.forEach(s => {
+        addBalance(map, s.participantId, -s.amountMinor);
+      });
+    });
+    state.recordedSettlements.forEach(s => {
+      addBalance(map, s.from, -s.amountMinor);
+      addBalance(map, s.to, s.amountMinor);
+    });
+    return map;
+  }
+
+  // Attach settlement sheet listeners once DOM references exist
+  if (el.settlementSheet) {
+    if (el.settlementSheetClose) {
+      el.settlementSheetClose.addEventListener('click', closeSettlementSheet);
+    }
+    if (el.settlementSheetBackdrop) {
+      el.settlementSheetBackdrop.addEventListener('click', closeSettlementSheet);
+    }
+    if (el.settlementCancelBtn) {
+      el.settlementCancelBtn.addEventListener('click', closeSettlementSheet);
+    }
+    if (el.settlementForm) {
+      el.settlementForm.addEventListener('submit', submitSettlementForm);
+    }
+    if (el.settlementSwapBtn) {
+      el.settlementSwapBtn.addEventListener('click', () => {
+        if (!el.settlementFromSelect || !el.settlementToSelect) return;
+        const a = el.settlementFromSelect.value;
+        el.settlementFromSelect.value = el.settlementToSelect.value;
+        el.settlementToSelect.value = a;
+      });
+    }
+  }
+
+  function resolveParticipantName(idOrName) {
+    if (!idOrName) return '';
+    // If value matches an existing participant id, return displayName
+    const p = state.participants.get(idOrName);
+    if (p && p.displayName) return p.displayName;
+    // Otherwise it might already be a legacy/migrated name string
+    return idOrName;
+  }
+
+  function refreshSplitConfigUI() {
+    if (!el.splitConfig) return;
+    const mode = el.splitModeSelect ? el.splitModeSelect.value : 'even';
+  const participants = activeParticipants();
+    if (!participants.length) {
+      el.splitConfig.innerHTML = '<div style="font-size:.65rem;color:var(--muted);">Add participants to configure splits.</div>';
+      return;
+    }
+    if (mode === 'even') {
+      el.splitConfig.innerHTML = `<div style="font-size:.65rem;color:var(--muted);">Evenly split among ${participants.length} participant(s).</div>`;
+    } else if (mode === 'weight') {
+      el.splitConfig.innerHTML = participants.map(p=>`<label style="display:flex;align-items:center;gap:.4rem;font-size:.65rem;">${escapeHtml(p.displayName)}<input type="number" class="weight-input" data-pid="${p.id}" min="1" value="1" style="width:54px;padding:.15rem .25rem;font-size:.65rem;"/></label>`).join('');
+    } else if (mode === 'manual' || mode === 'mixed') {
+      el.splitConfig.innerHTML = participants.map(p=>`<label style="display:flex;align-items:center;gap:.4rem;font-size:.65rem;">${escapeHtml(p.displayName)}<input type="number" class="manual-input" data-pid="${p.id}" min="0" step="0.01" placeholder="0.00" style="width:70px;padding:.15rem .25rem;font-size:.65rem;"/></label>`).join('');
+    }
+  }
+
+  function collectSplits(amountMinor) {
+    const mode = el.splitModeSelect ? el.splitModeSelect.value : 'even';
+  const participants = activeParticipants();
+    if (!participants.length) return [];
+    if (mode === 'even') {
+      return participants.map(p => ({ participantId: p.id, mode: 'even' }));
+    } else if (mode === 'weight') {
+      const weights = Array.from(el.splitConfig.querySelectorAll('.weight-input'));
+      return weights.map(inp => ({ participantId: inp.getAttribute('data-pid'), mode: 'weight', weight: Number(inp.value)||1 }));
+    } else if (mode === 'manual') {
+      const manuals = Array.from(el.splitConfig.querySelectorAll('.manual-input'));
+      return manuals.map(inp => ({ participantId: inp.getAttribute('data-pid'), mode: 'manual', amountMinor: Math.round(parseFloat(inp.value||'0')*100) }));
+    } else if (mode === 'mixed') {
+      // Mixed: treat non-empty manual as manual; others even
+      const manuals = Array.from(el.splitConfig.querySelectorAll('.manual-input'));
+      const manualSplits = [];
+      const remaining = [];
+      manuals.forEach(inp => {
+        const v = parseFloat(inp.value||'');
+        const pid = inp.getAttribute('data-pid');
+        if (v>0) manualSplits.push({ participantId: pid, mode:'manual', amountMinor: Math.round(v*100) }); else remaining.push(pid);
+      });
+      remaining.forEach(pid => manualSplits.push({ participantId: pid, mode:'even' }));
+      return manualSplits;
+    }
+    return [];
+  }
+
+  function submitExpenseForm() {
+    const title = (el.expenseTitle && el.expenseTitle.value.trim()) || '';
+    const amtStr = el.expenseAmount && el.expenseAmount.value.trim();
+    const amountMinor = Math.round(parseFloat(amtStr||'0') * 100);
+    if (!title || !(amountMinor>0)) { showToast('Invalid expense','error'); return; }
+    const splits = collectSplits(amountMinor);
+    // Determine createdAt from date input if provided
+    let createdAtOverride = null;
+    if (el.expenseDate && el.expenseDate.value) {
+      // Interpret as local date at 12:00 noon to avoid DST midnight edge causing previous day in UTC grouping
+      const parts = el.expenseDate.value.split('-');
+      if (parts.length === 3) {
+        const year = Number(parts[0]);
+        const month = Number(parts[1]) - 1; // zero-based
+        const day = Number(parts[2]);
+        const dt = new Date(year, month, day, 12, 0, 0, 0);
+        createdAtOverride = dt.getTime();
+      }
+    }
+    const expense = createExpense({ title, amountMinor, splits });
+    // Apply payer override if selected
+    if (el.payerSelect && el.payerSelect.value) {
+      expense.payer = el.payerSelect.value;
+      state.lastSelectedPayerId = el.payerSelect.value;
+    } else {
+      // If blank and we have an existing lastSelected still active, keep actor default
+      const stillActive = activeParticipants().some(p=>p.id === state.lastSelectedPayerId);
+      if (stillActive) expense.payer = state.lastSelectedPayerId;
+    }
+    if (createdAtOverride) {
+      expense.createdAt = createdAtOverride;
+    }
+    broadcastExpense(expense);
+    // reset
+    if (el.expenseForm) el.expenseForm.reset();
+    refreshSplitConfigUI();
+  }
+
+  function populatePayerSelect() {
+    if (!el.payerSelect) return;
+    const was = el.payerSelect.value;
+    const participants = activeParticipants();
+    const lines = ['<option value=""'+(was===''?' selected':'')+'>Select payer…</option>'];
+    participants.forEach(p => {
+      const sel = p.id === was ? ' selected' : '';
+      lines.push(`<option value="${escapeHtml(p.id)}"${sel}>${escapeHtml(p.displayName)}</option>`);
+    });
+    const html = lines.join('');
+    if (el.payerSelect.innerHTML !== html) {
+      el.payerSelect.innerHTML = html;
+    }
+  }
+
+  // Delegate clicks for expense delete & settlement record
+  document.addEventListener('click', (e) => {
+    const delBtn = e.target.closest && e.target.closest('.expense-delete');
+    if (delBtn) {
+      const id = delBtn.getAttribute('data-id');
+      const exp = state.expenses.get(id);
+      if (exp) broadcastExpenseDelete(exp);
+    }
+    if (e.target.classList && e.target.classList.contains('record-settlement-btn')) {
+      const item = e.target.closest('.settlement-item');
+      if (item) {
+        const from = item.getAttribute('data-from');
+        const to = item.getAttribute('data-to');
+        const amt = Number(item.getAttribute('data-amt'));
+        openSettlementSheet({ from, to, amountMinor: amt });
+      }
+    }
+  });
+
+  // Kickstart app (was lost in refactor causing FAB to be inert)
+  init();
 })();

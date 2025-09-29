@@ -1,4 +1,4 @@
-REPO="/Users/Shared/dev/pi-flash"
+REPO="/Users/Shared/dev/macuenta"
 
 sudo chflags -R nouchg,noschg "$REPO"
 sudo chmod  -RN "$REPO"

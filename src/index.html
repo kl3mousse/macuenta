@@ -9,27 +9,232 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="app-header">
-  <h1>macuenta</h1>
+    <header class="app-bar" role="banner">
+      <div class="app-bar-inner">
+        <div class="app-bar-left">
+          <img src="logo.png" alt="macuenta logo" class="app-bar-logo" />
+        </div>
+        <h1 class="app-bar-title" aria-level="1" role="heading">ma Cuenta</h1>
+        <div class="app-bar-right"></div>
+      </div>
     </header>
+    <section id="onboarding-screen" class="onboarding" hidden>
+      <div class="onboarding-card" role="dialog" aria-labelledby="onboarding-title-heading">
+        <header class="onboarding-head">
+          <h1 id="onboarding-title-heading">Set up your trip</h1>
+          <p class="onboarding-subtitle">Give this shared account a name, choose the currency, and add who’s joining.</p>
+        </header>
+        <label class="onboarding-field" for="onboarding-title">
+          <span class="onboarding-label">Trip title</span>
+          <input id="onboarding-title" type="text" maxlength="60" placeholder="Weekend in Montmartre" autocomplete="off" />
+        </label>
+        <label class="onboarding-field" for="onboarding-currency">
+          <span class="onboarding-label">Currency</span>
+          <select id="onboarding-currency">
+            <option value="EUR" selected>EUR — Euro (€)</option>
+            <option value="USD">USD — US Dollar ($)</option>
+            <option value="GBP">GBP — Pound (£)</option>
+            <option value="CHF">CHF — Swiss Franc</option>
+          </select>
+        </label>
+        <div class="onboarding-field">
+          <span class="onboarding-label">Participants</span>
+          <div id="onboarding-participant-chips" class="onboarding-chip-list" role="list"></div>
+          <div class="onboarding-add">
+            <input id="onboarding-participant-input" type="text" maxlength="60" placeholder="Add a name" autocomplete="off" />
+            <button type="button" id="onboarding-add-participant" class="secondary-btn onboarding-add-btn">Add</button>
+          </div>
+        </div>
+  <button type="button" id="onboarding-start" class="primary-btn onboarding-start" onclick="window.__startTracking && window.__startTracking()">Start tracking</button>
+      </div>
+    </section>
 
     <main class="app-main">
-      <div class="welcome-section">
-        <h2>Shared expenses skeleton</h2>
-        <p>Prototype sync: add dummy expenses and see the count sync across peers.</p>
-        <div style="display:flex;gap:.75rem;flex-wrap:wrap;justify-content:center;">
-          <button id="add-expense-btn" class="primary-btn">Add dummy expense</button>
-          <button id="noop-btn" class="secondary-btn">Send noop</button>
+      <section class="app-shell">
+        <header class="hero-card" aria-labelledby="group-name">
+          <div class="hero-card-inner hero-card-centered">
+            <h1 class="hero-title" id="group-name" title="macuenta">macuenta</h1>
+            <p id="header-subtitle" class="hero-total" aria-live="polite">0.00 €</p>
+            <button id="participants-summary" class="hero-participants-summary" type="button" aria-label="Manage participants">
+              <span class="participants-summary-count" id="participants-summary-text">Add participants</span>
+              <span class="participants-summary-icon" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </header>
+
+        <nav class="tab-bar top" id="tab-bar" aria-label="Primary">
+          <div class="tab-pill-group">
+            <button class="tab-btn is-active" data-tab-target="expenses">Expenses</button>
+            <button class="tab-btn" data-tab-target="balance">Balance</button>
+            <button class="tab-btn" data-tab-target="reimburse">Reimburse</button>
+          </div>
+        </nav>
+
+        <div id="content" class="content-area">
+          <!-- Expenses View -->
+          <div id="view-expenses" class="app-view is-active" data-tab="expenses">
+            <section class="section-block">
+              <header class="section-header">
+                <h2 class="section-title">Expenses</h2>
+              </header>
+              <div id="expenses-empty" class="empty-state">
+                <div class="empty-illustration" aria-hidden="true">🧾</div>
+                <p class="empty-title">No expenses yet</p>
+                <p class="empty-subtitle">Start by adding your first one.</p>
+                <button type="button" class="primary-btn empty-cta" onclick="window.__openExpenseSheet && window.__openExpenseSheet()">Add expense</button>
+              </div>
+              <ul id="expenses-list" class="expense-list" role="list"></ul>
+            </section>
+          </div>
+
+          <!-- Balance View -->
+          <div id="view-balance" class="app-view" data-tab="balance" hidden>
+            <section class="section-block">
+              <header class="section-header">
+                <h2 class="section-title">Balance</h2>
+              </header>
+              <div id="balance-chart" class="balance-chart" aria-hidden="true"></div>
+              <ul id="balances-list" class="balance-list" role="list"></ul>
+              <p id="no-balances-hint" class="section-hint">Balances appear after adding expenses.</p>
+            </section>
+          </div>
+
+          <!-- Reimburse View -->
+          <div id="view-reimburse" class="app-view" data-tab="reimburse" hidden>
+            <section class="section-block">
+              <header class="section-header">
+                <h2 class="section-title">Settle up</h2>
+              </header>
+              <ul id="settlements-list" class="settlement-list" role="list"></ul>
+              <p id="no-settlements-hint" class="section-hint">All settled.</p>
+            </section>
+            <section class="section-block">
+              <header class="section-header">
+                <h2 class="section-title">Completed transfers</h2>
+              </header>
+              <ul id="completed-settlements-list" class="settlement-list is-secondary" role="list"></ul>
+              <p id="no-completed-settlements-hint" class="section-hint">None yet.</p>
+            </section>
+          </div>
         </div>
-      </div>
-      
-      <div id="content" class="content-area">
-        <p><strong>Expenses:</strong> <span id="expense-count">0</span></p>
-        <p class="muted" style="color:var(--muted);font-size:.9rem;">This is Step 1: skeleton app & state sync. Only expense.add + noop events are implemented.</p>
-      </div>
+      </section>
     </main>
+
+    <button id="fab-add" class="fab" aria-label="Add expense">＋</button>
+
+    <div class="sheet-backdrop" id="expense-sheet-backdrop" hidden></div>
+    <aside class="bottom-sheet" id="expense-sheet" aria-hidden="true" aria-labelledby="sheet-title" role="dialog">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-header">
+        <h2 id="sheet-title">Add Expense</h2>
+        <button type="button" class="icon-btn close-btn" id="sheet-close" aria-label="Close">✕</button>
+      </div>
+      <form id="expense-form" autocomplete="off" class="sheet-form">
+        <label class="fld">
+          <span class="fld-label">Title</span>
+          <input id="exp-title" required maxlength="140" placeholder="e.g. Lunch" />
+        </label>
+        <label class="fld">
+          <span class="fld-label">Amount (EUR)</span>
+          <input id="exp-amount" required type="number" min="0.01" step="0.01" placeholder="0.00" />
+        </label>
+        <label class="fld">
+          <span class="fld-label">Date</span>
+          <input id="exp-date" type="date" required />
+        </label>
+        <div class="fld">
+          <span class="fld-label">Payer</span>
+          <select id="exp-payer" class="fld-select">
+            <option value="" selected>Select payer…</option>
+          </select>
+        </div>
+        <label class="fld">
+          <span class="fld-label">Split Mode</span>
+          <select id="split-mode">
+            <option value="even" selected>Even</option>
+            <option value="weight">Weight</option>
+            <option value="manual">Manual</option>
+            <option value="mixed">Mixed (Manual + Weight/Even)</option>
+          </select>
+        </label>
+        <div id="split-config" class="split-config-box">
+          <div style="font-size:.65rem;color:var(--muted);">Add participants to configure splits. Mode-specific inputs will appear here.</div>
+        </div>
+        <div class="sheet-actions">
+          <button type="button" class="secondary-btn" id="sheet-cancel">Cancel</button>
+          <button type="submit" class="primary-btn">Save</button>
+        </div>
+      </form>
+    </aside>
+
+    <div class="sheet-backdrop" id="participants-sheet-backdrop" hidden></div>
+    <aside class="bottom-sheet participants-sheet" id="participants-sheet" aria-hidden="true" aria-labelledby="participants-sheet-title" role="dialog">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-header participants-sheet-header">
+        <h2 id="participants-sheet-title">Participants</h2>
+        <button type="button" class="icon-btn close-btn" id="participants-sheet-close" aria-label="Close">✕</button>
+      </div>
+      <div class="participants-sheet-body" role="document">
+        <button type="button" class="primary-btn participants-add-btn" id="participants-sheet-add">Add participant</button>
+        <form id="participant-editor" class="participant-editor" autocomplete="off" hidden>
+          <label class="participant-editor-field" for="participant-name-input">
+            <span class="fld-label">Participant name</span>
+            <input id="participant-name-input" type="text" maxlength="60" placeholder="e.g. Ana" required />
+          </label>
+          <div class="sheet-actions participant-editor-actions">
+            <button type="button" class="secondary-btn" id="participant-editor-cancel">Cancel</button>
+            <button type="submit" class="primary-btn" id="participant-editor-submit">Add</button>
+          </div>
+        </form>
+        <section class="participants-section">
+          <header class="participants-section-header">
+            <h3 class="participants-section-title">Active</h3>
+            <span class="participants-count" id="participants-active-count">0</span>
+          </header>
+          <p class="participants-hint" id="participants-sheet-empty">Add people to split expenses.</p>
+          <ul id="participants-sheet-list" class="participants-list" role="list"></ul>
+        </section>
+        <section class="participants-section archived" id="participants-archived-section" hidden>
+          <header class="participants-section-header">
+            <h3 class="participants-section-title">Archived</h3>
+            <span class="participants-count" id="participants-archived-count">0</span>
+          </header>
+          <p class="participants-hint" id="participants-archived-empty">No archived participants.</p>
+          <ul id="participants-archived-list" class="participants-list" role="list"></ul>
+        </section>
+      </div>
+    </aside>
 
     <script src="i18n.js"></script>
     <script src="main.js"></script>
+    <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+
+    <!-- Settlement Confirmation Sheet -->
+    <div class="sheet-backdrop" id="settlement-sheet-backdrop" hidden></div>
+    <aside class="bottom-sheet" id="settlement-sheet" aria-hidden="true" aria-labelledby="settlement-sheet-title" role="dialog">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-header">
+        <h2 id="settlement-sheet-title">Record Transfer</h2>
+        <button type="button" class="icon-btn close-btn" id="settlement-sheet-close" aria-label="Close">✕</button>
+      </div>
+      <form id="settlement-form" autocomplete="off" class="sheet-form">
+        <div class="fld">
+          <span class="fld-label">From / To</span>
+          <div class="settle-direction-row">
+            <select id="settle-from" class="fld-select"></select>
+            <button type="button" id="settle-swap" class="ghost-btn" aria-label="Swap direction" style="align-self:flex-end;">⇄</button>
+            <select id="settle-to" class="fld-select"></select>
+          </div>
+        </div>
+        <label class="fld">
+          <span class="fld-label">Amount (<span id="settle-currency">EUR</span>)</span>
+          <input id="settle-amount" type="number" min="0.01" step="0.01" required placeholder="0.00" />
+        </label>
+        <div class="sheet-actions">
+          <button type="button" class="secondary-btn" id="settle-cancel">Cancel</button>
+          <button type="submit" class="primary-btn" id="settle-save">Save</button>
+        </div>
+      </form>
+    </aside>
   </body>
 </html>
