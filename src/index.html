@@ -15,7 +15,9 @@
           <img src="logo.png" alt="macuenta logo" class="app-bar-logo" />
         </div>
         <h1 class="app-bar-title" aria-level="1" role="heading">ma Cuenta</h1>
-        <div class="app-bar-right"></div>
+        <div class="app-bar-right">
+          <button id="ledger-btn" class="app-bar-icon-btn" type="button" aria-label="View ledger" title="Ledger" onclick="window.__openLedger && window.__openLedger()">📜</button>
+        </div>
       </div>
     </header>
     <section id="onboarding-screen" class="onboarding" hidden>
@@ -230,11 +232,29 @@
           <span class="fld-label">Amount (<span id="settle-currency">EUR</span>)</span>
           <input id="settle-amount" type="number" min="0.01" step="0.01" required placeholder="0.00" />
         </label>
+        <label class="fld">
+          <span class="fld-label">Date</span>
+          <input id="settle-date" type="date" required />
+        </label>
         <div class="sheet-actions">
           <button type="button" class="secondary-btn" id="settle-cancel">Cancel</button>
           <button type="submit" class="primary-btn" id="settle-save">Save</button>
         </div>
       </form>
+    </aside>
+
+    <!-- Ledger Sheet -->
+    <div class="sheet-backdrop" id="ledger-sheet-backdrop" hidden></div>
+    <aside class="bottom-sheet" id="ledger-sheet" aria-hidden="true" aria-labelledby="ledger-sheet-title" role="dialog">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-header">
+        <h2 id="ledger-sheet-title">Ledger</h2>
+        <button type="button" class="icon-btn close-btn" id="ledger-sheet-close" aria-label="Close ledger">✕</button>
+      </div>
+      <div class="sheet-form" style="gap:10px;">
+        <p id="ledger-empty" style="font-size:12px; color:var(--c-muted); margin:4px 0; display:none;">No entries yet.</p>
+        <ul id="ledger-list" class="ledger-list" role="list" aria-label="All expenses and settlements"></ul>
+      </div>
     </aside>
   </body>
 </html>

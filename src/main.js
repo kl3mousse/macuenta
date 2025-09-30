@@ -62,6 +62,7 @@
   settleTo: document.getElementById('settle-to'),
   settleSwap: document.getElementById('settle-swap'),
   settleAmount: document.getElementById('settle-amount'),
+  settleDate: document.getElementById('settle-date'),
   settleCurrency: document.getElementById('settle-currency'),
   settleCancel: document.getElementById('settle-cancel'),
     onboardingScreen: document.getElementById('onboarding-screen'),
@@ -71,6 +72,13 @@
     onboardingParticipantInput: document.getElementById('onboarding-participant-input'),
     onboardingAddParticipantBtn: document.getElementById('onboarding-add-participant'),
     onboardingStartBtn: document.getElementById('onboarding-start'),
+    // Ledger elements
+    ledgerBtn: document.getElementById('ledger-btn'),
+    ledgerSheet: document.getElementById('ledger-sheet'),
+    ledgerSheetBackdrop: document.getElementById('ledger-sheet-backdrop'),
+    ledgerSheetClose: document.getElementById('ledger-sheet-close'),
+    ledgerList: document.getElementById('ledger-list'),
+    ledgerEmpty: document.getElementById('ledger-empty'),
   };
 
   // ------------------------------
@@ -214,14 +222,22 @@
     } else if (env.type === 'meta.patch' && env.meta) {
       applyMetaPatch(env.meta);
     } else if (env.type === 'settlement.add' && env.settlement) {
-      if (!state.recordedSettlements.find(s => s.id === env.settlement.id)) {
+      const already = state.recordedSettlements.find(s => s.id === env.settlement.id);
+      if (!already) {
+        console.debug('[settlement] applying settlement.add', env.settlement);
         state.recordedSettlements.push(env.settlement);
+      } else {
+        console.debug('[settlement] duplicate settlement ignored', env.settlement.id);
       }
     }
     if (['expense.add','expense.edit','expense.delete','settlement.add'].includes(env.type)) {
       recomputeExpenseCount();
       recomputeBalances();
       recomputeSettlements();
+    }
+    // If ledger sheet open, refresh its contents after each relevant event
+    if (el.ledgerSheet && el.ledgerSheet.classList && el.ledgerSheet.classList.contains('is-open')) {
+      renderLedger();
     }
     // noop: nothing else
     updateSubtitle();
@@ -309,10 +325,11 @@
       owed.forEach((amt, pid) => addBalance(balances, pid, -amt));
     });
     state.balances = balances;
-    // Apply recorded settlements (from pays to)
+    // Apply recorded settlements: when 'from' pays 'to', 
+    // 'from' reduces their debt (balance increases) and 'to' reduces what they're owed (balance decreases)
     state.recordedSettlements.forEach(s => {
-      addBalance(state.balances, s.from, -s.amountMinor);
-      addBalance(state.balances, s.to, s.amountMinor);
+      addBalance(state.balances, s.from, s.amountMinor);   // from pays, reducing their debt (balance goes up)
+      addBalance(state.balances, s.to, -s.amountMinor);    // to receives, reducing what they're owed (balance goes down)
     });
   }
 
@@ -345,20 +362,29 @@
   }
 
   // Record a settlement that user confirms has been paid externally
-  function recordSettlement(from, to, amountMinor) {
+  function recordSettlement(from, to, amountMinor, createdAtOverride) {
     // Basic validation: positive amount and participants must differ
     if (!from || !to || from === to) return;
     if (!(amountMinor > 0)) return;
-    // Prevent duplicates with same from/to/amount that already exist (idempotence helper)
-    const existing = state.recordedSettlements.find(s => s.from === from && s.to === to && s.amountMinor === amountMinor);
-    if (existing) return; // already recorded (we could still allow multiple partials, but keep simple for now)
+  // Only prevent duplicate identical id; allow multiple partial / repeated settlements
+  // (uniqueness guaranteed by generated UUID id)
     const settlement = {
       id: crypto.randomUUID(),
       from, to, amountMinor,
-      createdAt: Date.now(),
+      createdAt: createdAtOverride || Date.now(),
       createdBy: state.localParticipantId || 'local'
     };
-    sendEnvelope({ type: 'settlement.add', settlement });
+    console.debug('[settlement] broadcasting settlement.add', settlement);
+    const envelope = {
+      v: 1,
+      type: 'settlement.add',
+      ts: Date.now(),
+      actor: state.actorName,
+      clientId: state.clientId,
+      eventId: randomId(),
+      settlement,
+    };
+    sendEnvelope(envelope);
   }
 
   function addBalance(map, participant, delta) {
@@ -637,6 +663,8 @@
         showParticipantEditor('add');
       });
     }
+    // Ledger open / close
+    hydrateLedgerElements();
     if (el.participantEditor) {
       el.participantEditor.addEventListener('submit', handleParticipantEditorSubmit);
     }
@@ -744,13 +772,17 @@
     }
     renderParticipantsSheet();
     if (el.balancesList) {
-      const entries = Array.from(state.balances.entries()).filter(([_,v])=>v!==0);
-      if (entries.length) {
-        // sort creditors (positive) descending, then debtors (negative) ascending absolute
-        const positives = entries.filter(e=>e[1]>0).sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0]));
-        const negatives = entries.filter(e=>e[1]<0).sort((a,b)=> a[1]-b[1] || a[0].localeCompare(b[0])); // more negative last? keep natural
-        const ordered = positives.concat(negatives);
-        const maxAbs = ordered.reduce((m,[,v])=> Math.max(m, Math.abs(v)), 0) || 1;
+      // Show all active participants, including those with zero balance
+      const activeParticipantIds = activeParticipants().map(p => p.id);
+      const allEntries = activeParticipantIds.map(id => [id, state.balances.get(id) || 0]);
+      
+      if (allEntries.length) {
+        // sort: positives (creditors) descending, zeros in middle, negatives (debtors) ascending absolute
+        const positives = allEntries.filter(e=>e[1]>0).sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0]));
+        const zeros = allEntries.filter(e=>e[1]===0).sort((a,b)=> a[0].localeCompare(b[0]));
+        const negatives = allEntries.filter(e=>e[1]<0).sort((a,b)=> a[1]-b[1] || a[0].localeCompare(b[0]));
+        const ordered = positives.concat(zeros).concat(negatives);
+        const maxAbs = Math.max(1, Math.max(...allEntries.map(([,v]) => Math.abs(v))));
         el.balancesList.innerHTML = ordered.map(([pid, minor]) => balanceRowHTML(pid, minor, maxAbs)).join('');
         el.balancesList.style.display = 'flex';
       } else {
@@ -762,7 +794,7 @@
         el.balanceChart.hidden = true;
       }
       if (el.noBalancesHint) {
-        el.noBalancesHint.style.display = entries.length ? 'none' : 'block';
+        el.noBalancesHint.style.display = allEntries.length ? 'none' : 'block';
       }
     }
     if (el.settlementsList) {
@@ -779,6 +811,10 @@
       if (el.noCompletedSettlementsHint) {
         el.noCompletedSettlementsHint.style.display = items.length ? 'none' : 'block';
       }
+    }
+    // Live ledger update if open
+    if (el.ledgerSheet && el.ledgerSheet.classList.contains('is-open')) {
+      renderLedger();
     }
   }
 
@@ -994,9 +1030,13 @@
     const toName = resolveParticipantName(s.to) || s.to;
     const actionLabel = 'Record';
     return `<li class="settlement-item" data-from="${escapeHtml(s.from)}" data-to="${escapeHtml(s.to)}" data-amt="${s.amountMinor}">
-      <span class="settlement-route">${escapeHtml(fromName)} → ${escapeHtml(toName)}</span>
-      <strong class="settlement-amount">${escapeHtml(amt)}</strong>
-      <button type="button" class="record-settlement-btn" data-action="record" aria-label="Record settlement">${escapeHtml(actionLabel)}</button>
+      <div class="settlement-main">
+        <span class="settlement-route" title="${escapeHtml(fromName)} → ${escapeHtml(toName)}">${escapeHtml(fromName)} → ${escapeHtml(toName)}</span>
+      </div>
+      <div class="settlement-meta">
+        <span class="settlement-amount">${escapeHtml(amt)}</span>
+        <button type="button" class="record-settlement-btn" data-action="record" aria-label="Record settlement">${escapeHtml(actionLabel)}</button>
+      </div>
     </li>`;
   }
 
@@ -1004,7 +1044,12 @@
     const amt = formatAmountDisplay(s.amountMinor);
     const fromName = resolveParticipantName(s.from) || s.from;
     const toName = resolveParticipantName(s.to) || s.to;
-    return `<li class="completed-settlement-item">${escapeHtml(fromName)} → ${escapeHtml(toName)} <strong style="float:right;">${escapeHtml(amt)}</strong></li>`;
+    const d = new Date(s.createdAt || Date.now());
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    return `<li class="completed-settlement-item"><span class="settlement-route">${escapeHtml(fromName)} → ${escapeHtml(toName)}</span><strong class="settlement-amount">${escapeHtml(amt)}</strong><span class="settlement-date" style="margin-left:auto;font-size:11px;color:var(--c-muted);">${escapeHtml(dateStr)}</span></li>`;
   }
 
   const iconThemeCatalog = [
@@ -1599,17 +1644,80 @@
     handleOnboardingStart();
   };
 
+  // Global fallback for ledger (debugging)
+  window.__openLedger = function(){
+    console.debug('[ledger] global __openLedger called');
+    openLedgerSheet();
+  };
+
   // updateReimburseCallout removed (callout deprecated)
 
   // --- Settlement Sheet Logic ---
+  function hydrateSettlementSheetElements(force=false) {
+    if (el._settlementHydrated && !force) return;
+    const ids = {
+      settlementSheetBackdrop: 'settlement-sheet-backdrop',
+      settlementSheet: 'settlement-sheet',
+      settlementSheetClose: 'settlement-sheet-close',
+      settlementForm: 'settlement-form',
+      settleFrom: 'settle-from',
+      settleTo: 'settle-to',
+      settleSwap: 'settle-swap',
+      settleAmount: 'settle-amount',
+      settleCurrency: 'settle-currency',
+      settleCancel: 'settle-cancel',
+      settleDate: 'settle-date'
+    };
+    Object.entries(ids).forEach(([k,id]) => {
+      if (!el[k]) {
+        el[k] = document.getElementById(id);
+      }
+    });
+    // Attach listeners once elements exist
+    if (el.settlementSheet && !el.settlementSheet.dataset.bound) {
+      if (el.settlementSheetClose) el.settlementSheetClose.addEventListener('click', closeSettlementSheet);
+      if (el.settlementSheetBackdrop) el.settlementSheetBackdrop.addEventListener('click', closeSettlementSheet);
+      if (el.settleCancel) el.settleCancel.addEventListener('click', closeSettlementSheet);
+      if (el.settlementForm) el.settlementForm.addEventListener('submit', submitSettlementForm);
+      if (el.settleSwap) el.settleSwap.addEventListener('click', () => {
+        const fromEl = el.settleFrom || el.settlementFromSelect;
+        const toEl = el.settleTo || el.settlementToSelect;
+        if (!fromEl || !toEl) return;
+        const a = fromEl.value; fromEl.value = toEl.value; toEl.value = a;
+      });
+      el.settlementSheet.dataset.bound = 'true';
+    }
+    el._settlementHydrated = true;
+  }
+
+  // Hydrate late-loaded settlement sheet markup once DOM fully parsed
+  document.addEventListener('DOMContentLoaded', () => {
+    hydrateSettlementSheetElements();
+    hydrateLedgerElements();
+  });
+
   function openSettlementSheet(preset) {
     // preset: { from, to, amountMinor }
-    if (!el.settlementSheet) return;
+    hydrateSettlementSheetElements();
+    if (!el.settlementSheet) {
+      console.warn('[settlement] sheet element still missing after hydration');
+      showToast('Settlement UI not ready','error');
+      return;
+    }
     // Populate participant selects
     populateSettlementParticipantOptions();
     const parts = activeParticipants();
-    const fromSel = el.settlementFromSelect;
-    const toSel = el.settlementToSelect;
+    const fromSel = el.settleFrom || el.settlementFromSelect;
+    const toSel = el.settleTo || el.settlementToSelect;
+    if (!fromSel || !toSel) {
+      console.warn('[settlement] select elements missing');
+      showToast('Cannot open settlement – UI missing','error');
+      return;
+    }
+    if (!parts.length) {
+      showToast('Add participants first','warn');
+      return;
+    }
     if (preset && preset.from && parts.find(p=>p.id===preset.from)) {
       fromSel.value = preset.from;
     } else if (parts.length>=2) {
@@ -1621,20 +1729,30 @@
       toSel.value = parts[1].id === fromSel.value && parts.length>2 ? parts[2].id : parts[1].id;
     }
     // Amount
-    if (el.settlementAmountInput) {
+    if (el.settleAmount || el.settlementAmountInput) {
       const amt = preset && preset.amountMinor ? (preset.amountMinor/100).toFixed(2) : '';
-      el.settlementAmountInput.value = amt;
+      (el.settleAmount || el.settlementAmountInput).value = amt;
     }
-    if (el.settlementCurrencySpan) {
-      el.settlementCurrencySpan.textContent = activeCurrency();
+    if (el.settleCurrency || el.settlementCurrencySpan) {
+      (el.settleCurrency || el.settlementCurrencySpan).textContent = activeCurrency();
+    }
+    // Date default (today) if empty or new preset
+    if (el.settleDate) {
+      if (!el.settleDate.value) {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth()+1).padStart(2,'0');
+        const dd = String(today.getDate()).padStart(2,'0');
+        el.settleDate.value = `${yyyy}-${mm}-${dd}`;
+      }
     }
     // Show sheet
     el.settlementSheetBackdrop.hidden = false;
     el.settlementSheet.removeAttribute('aria-hidden');
     el.settlementSheet.classList.add('is-open');
     // Focus amount for quick edit
-    if (el.settlementAmountInput) {
-      requestAnimationFrame(()=> el.settlementAmountInput.focus());
+    if (el.settleAmount || el.settlementAmountInput) {
+      requestAnimationFrame(()=> (el.settleAmount || el.settlementAmountInput).focus());
     }
   }
 
@@ -1647,21 +1765,30 @@
 
   function populateSettlementParticipantOptions() {
     const participants = activeParticipants();
+    const targetFrom = el.settleFrom || el.settlementFromSelect;
+    const targetTo = el.settleTo || el.settlementToSelect;
+    if (!targetFrom || !targetTo) {
+      console.warn('[settlement] participant select elements missing');
+      return;
+    }
     const optsHtml = participants.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.displayName)}</option>`).join('');
-    if (el.settlementFromSelect) el.settlementFromSelect.innerHTML = optsHtml;
-    if (el.settlementToSelect) el.settlementToSelect.innerHTML = optsHtml;
+    targetFrom.innerHTML = optsHtml;
+    targetTo.innerHTML = optsHtml;
   }
 
   function submitSettlementForm(e) {
     if (e) e.preventDefault();
-    if (!el.settlementFromSelect || !el.settlementToSelect || !el.settlementAmountInput) return;
-    const from = el.settlementFromSelect.value;
-    const to = el.settlementToSelect.value;
+  const fromSel2 = el.settleFrom || el.settlementFromSelect;
+  const toSel2 = el.settleTo || el.settlementToSelect;
+  const amtEl = el.settleAmount || el.settlementAmountInput;
+  if (!fromSel2 || !toSel2 || !amtEl) return;
+  const from = fromSel2.value;
+  const to = toSel2.value;
     if (!from || !to || from === to) {
       showToast('Choose two different participants','warn');
       return;
     }
-    const raw = el.settlementAmountInput.value.trim();
+  const raw = amtEl.value.trim();
     if (!raw) {
       showToast('Enter an amount','warn');
       return;
@@ -1679,10 +1806,22 @@
       // Allow anyway but warn
       console.debug('[settlement] from participant not currently debtor (balance='+balFrom+')');
     }
-    recordSettlement(from,to,amountMinor);
-    showToast('Settlement recorded','success');
+    // Date override
+    let createdAtOverride = undefined;
+    if (el.settleDate && el.settleDate.value) {
+      const parts = el.settleDate.value.split('-');
+      if (parts.length === 3) {
+        const [y,m,d] = parts.map(Number);
+        if (y && m && d) {
+          createdAtOverride = new Date(Date.UTC(y, m-1, d, 12,0,0,0)).getTime();
+        }
+      }
+    }
+    recordSettlement(from,to,amountMinor,createdAtOverride);
+    showToast('Settlement saved','success');
     closeSettlementSheet();
-    render();
+    // render will occur after envelope processed; fallback timer for immediate UX
+    setTimeout(()=>{ render(); }, 50);
   }
 
   function computeBalancesSnapshot() {
@@ -1716,12 +1855,14 @@
     if (el.settlementForm) {
       el.settlementForm.addEventListener('submit', submitSettlementForm);
     }
-    if (el.settlementSwapBtn) {
-      el.settlementSwapBtn.addEventListener('click', () => {
-        if (!el.settlementFromSelect || !el.settlementToSelect) return;
-        const a = el.settlementFromSelect.value;
-        el.settlementFromSelect.value = el.settlementToSelect.value;
-        el.settlementToSelect.value = a;
+    if (el.settleSwap) {
+      el.settleSwap.addEventListener('click', () => {
+        const fromEl = el.settleFrom || el.settlementFromSelect;
+        const toEl = el.settleTo || el.settlementToSelect;
+        if (!fromEl || !toEl) return;
+        const a = fromEl.value;
+        fromEl.value = toEl.value;
+        toEl.value = a;
       });
     }
   }
@@ -1841,17 +1982,102 @@
       const exp = state.expenses.get(id);
       if (exp) broadcastExpenseDelete(exp);
     }
-    if (e.target.classList && e.target.classList.contains('record-settlement-btn')) {
-      const item = e.target.closest('.settlement-item');
-      if (item) {
-        const from = item.getAttribute('data-from');
-        const to = item.getAttribute('data-to');
-        const amt = Number(item.getAttribute('data-amt'));
-        openSettlementSheet({ from, to, amountMinor: amt });
-      }
+    const recordBtn = e.target.closest && e.target.closest('.record-settlement-btn');
+    if (recordBtn) {
+      const item = recordBtn.closest('.settlement-item');
+      if (!item) return;
+      const from = item.getAttribute('data-from');
+      const to = item.getAttribute('data-to');
+      const amt = Number(item.getAttribute('data-amt'));
+      openSettlementSheet({ from, to, amountMinor: amt });
     }
   });
 
   // Kickstart app (was lost in refactor causing FAB to be inert)
   init();
+  
+  // ---------------- Ledger Sheet Logic ----------------
+  function hydrateLedgerElements() {
+    if (!el.ledgerBtn) el.ledgerBtn = document.getElementById('ledger-btn');
+    if (!el.ledgerSheet) el.ledgerSheet = document.getElementById('ledger-sheet');
+    if (!el.ledgerSheetBackdrop) el.ledgerSheetBackdrop = document.getElementById('ledger-sheet-backdrop');
+    if (!el.ledgerSheetClose) el.ledgerSheetClose = document.getElementById('ledger-sheet-close');
+    if (!el.ledgerList) el.ledgerList = document.getElementById('ledger-list');
+    if (!el.ledgerEmpty) el.ledgerEmpty = document.getElementById('ledger-empty');
+    
+    // Attach listeners if not already done
+    if (el.ledgerBtn && !el.ledgerBtn.dataset.bound) {
+      console.debug('[ledger] Attaching click listener to ledger button');
+      el.ledgerBtn.addEventListener('click', () => {
+        console.debug('[ledger] Button clicked');
+        openLedgerSheet();
+      });
+      el.ledgerBtn.dataset.bound = 'true';
+    }
+    if (el.ledgerSheetClose && !el.ledgerSheetClose.dataset.bound) {
+      el.ledgerSheetClose.addEventListener('click', () => closeLedgerSheet());
+      el.ledgerSheetClose.dataset.bound = 'true';
+    }
+    if (el.ledgerSheetBackdrop && !el.ledgerSheetBackdrop.dataset.bound) {
+      el.ledgerSheetBackdrop.addEventListener('click', (e)=> { if (e.target === el.ledgerSheetBackdrop) closeLedgerSheet(); });
+      el.ledgerSheetBackdrop.dataset.bound = 'true';
+    }
+  }
+
+  function openLedgerSheet() {
+    console.debug('[ledger] Opening ledger sheet');
+    hydrateLedgerElements();
+    if (!el.ledgerSheet || !el.ledgerSheetBackdrop) {
+      console.warn('[ledger] Missing sheet or backdrop elements after hydration', { sheet: !!el.ledgerSheet, backdrop: !!el.ledgerSheetBackdrop });
+      return;
+    }
+    renderLedger();
+    el.ledgerSheetBackdrop.hidden = false;
+    requestAnimationFrame(()=>{
+      el.ledgerSheet.classList.add('is-open');
+      el.ledgerSheet.removeAttribute('aria-hidden');
+      console.debug('[ledger] Sheet opened');
+    });
+  }
+  function closeLedgerSheet() {
+    console.debug('[ledger] Closing ledger sheet');
+    if (!el.ledgerSheet || !el.ledgerSheetBackdrop) return;
+    el.ledgerSheet.classList.remove('is-open');
+    el.ledgerSheet.setAttribute('aria-hidden','true');
+    setTimeout(()=>{ if (el.ledgerSheetBackdrop) el.ledgerSheetBackdrop.hidden = true; },280);
+  }
+  function ledgerEntries() {
+    const expenses = Array.from(state.expenses.values())
+      .filter(e=>!e.deleted)
+      .map(e=>({ kind:'expense', id:e.id, ts:e.createdAt||0, description:e.description||'(no title)', amountMinor:e.amountMinor, payer:e.payer, currency:e.currency||activeCurrency() }));
+    const settlements = state.recordedSettlements.map(s=>({ kind:'settlement', id:s.id, ts:s.createdAt||0, from:s.from, to:s.to, amountMinor:s.amountMinor, currency: activeCurrency() }));
+    return expenses.concat(settlements).sort((a,b)=> b.ts - a.ts);
+  }
+  function renderLedger() {
+    console.debug('[ledger] Rendering ledger, list element:', !!el.ledgerList);
+    if (!el.ledgerList) return;
+    const entries = ledgerEntries();
+    console.debug('[ledger] Found', entries.length, 'entries');
+    if (!entries.length) {
+      el.ledgerList.innerHTML = '';
+      if (el.ledgerEmpty) el.ledgerEmpty.style.display = 'block';
+      return;
+    }
+    if (el.ledgerEmpty) el.ledgerEmpty.style.display = 'none';
+    el.ledgerList.innerHTML = entries.map(ledgerEntryHTML).join('');
+  }
+  function ledgerEntryHTML(entry) {
+    const d = new Date(entry.ts||0);
+    const yyyy=d.getFullYear(); const mm=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    if (entry.kind==='expense') {
+      const payerName = resolveParticipantName(entry.payer) || entry.payer;
+      return `<li class="ledger-entry" data-kind="expense" data-id="${escapeHtml(entry.id)}"><span class="ledger-entry-type">Expense</span><span class="ledger-entry-desc">${escapeHtml(entry.description)}</span><span class="ledger-entry-meta"><span class="ledger-entry-amt">${escapeHtml(formatAmountDisplay(entry.amountMinor, entry.currency))}</span><span class="ledger-entry-sub">${escapeHtml(payerName)} • ${escapeHtml(dateStr)}</span></span></li>`;
+    } else if (entry.kind==='settlement') {
+      const fromName = resolveParticipantName(entry.from) || entry.from;
+      const toName = resolveParticipantName(entry.to) || entry.to;
+      return `<li class="ledger-entry" data-kind="settlement" data-id="${escapeHtml(entry.id)}"><span class="ledger-entry-type" style="color:var(--c-success);">Transfer</span><span class="ledger-entry-desc">${escapeHtml(fromName)} → ${escapeHtml(toName)}</span><span class="ledger-entry-meta"><span class="ledger-entry-amt">${escapeHtml(formatAmountDisplay(entry.amountMinor, entry.currency))}</span><span class="ledger-entry-sub">${escapeHtml(dateStr)}</span></span></li>`;
+    }
+    return '';
+  }
 })();
