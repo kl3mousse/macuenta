@@ -5,7 +5,7 @@
   "description": "laCuenta - split bills made simple",
   "scripts": {
     "dev": "webxdc-dev run src --no-csp",
-    "pack": "mkdir -p dist && (cd src && zip -9 -r - *) > dist/lacuenta-v1.0.0.xdc",
+    "pack": "mkdir -p dist && (cd src && zip -9 -r - *) > dist/macuenta-v1.0.0.xdc",
     "dev:xdc": "npm run pack && webxdc-dev run dist/lacuenta-v1.0.0.xdc"
   },
   "devDependencies": {

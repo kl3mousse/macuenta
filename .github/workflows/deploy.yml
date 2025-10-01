@@ -18,7 +18,8 @@ jobs:
 
       - name: Prepare dist folder
         run: |
-          mkdir dist
+          rm -rf dist
+          mkdir -p dist
           cp -r src/* dist/
           cd dist
           zip -r macuenta.xdc ./*
