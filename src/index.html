@@ -21,33 +21,46 @@
       </div>
     </header>
     <section id="onboarding-screen" class="onboarding" hidden>
-      <div class="onboarding-card" role="dialog" aria-labelledby="onboarding-title-heading">
-        <header class="onboarding-head">
-          <h1 id="onboarding-title-heading">Set up your trip</h1>
-          <p class="onboarding-subtitle">Give this shared account a name, choose the currency, and add who’s joining.</p>
-        </header>
-        <label class="onboarding-field" for="onboarding-title">
-          <span class="onboarding-label">Trip title</span>
-          <input id="onboarding-title" type="text" maxlength="60" placeholder="Weekend in Montmartre" autocomplete="off" />
-        </label>
-        <label class="onboarding-field" for="onboarding-currency">
-          <span class="onboarding-label">Currency</span>
-          <select id="onboarding-currency">
-            <option value="EUR" selected>EUR — Euro (€)</option>
-            <option value="USD">USD — US Dollar ($)</option>
-            <option value="GBP">GBP — Pound (£)</option>
-            <option value="CHF">CHF — Swiss Franc</option>
-          </select>
-        </label>
-        <div class="onboarding-field">
-          <span class="onboarding-label">Participants</span>
-          <div id="onboarding-participant-chips" class="onboarding-chip-list" role="list"></div>
-          <div class="onboarding-add">
-            <input id="onboarding-participant-input" type="text" maxlength="60" placeholder="Add a name" autocomplete="off" />
-            <button type="button" id="onboarding-add-participant" class="secondary-btn onboarding-add-btn">Add</button>
+      <header class="onboarding-app-bar">
+        <div class="onboarding-app-bar-inner">
+          <div class="onboarding-app-bar-left">
+            <img src="logo.png" alt="macuenta logo" class="onboarding-app-logo" />
           </div>
+          <h1 class="onboarding-app-title">ma Cuenta</h1>
+          <div class="onboarding-app-bar-right"></div>
         </div>
-  <button type="button" id="onboarding-start" class="primary-btn onboarding-start" onclick="window.__startTracking && window.__startTracking()">Start tracking</button>
+      </header>
+      <div class="onboarding-description">
+        <p>Track shared expenses effortlessly with friends, family, or colleagues. Split costs fairly, see who owes what, and settle up without the hassle of manual calculations.</p>
+      </div>
+      <div class="onboarding-content">
+        <div class="onboarding-card" role="dialog" aria-labelledby="onboarding-title-heading">
+          <header class="onboarding-head">
+            <h2 id="onboarding-title-heading">Set up your trip</h2>
+          </header>
+          <label class="onboarding-field" for="onboarding-title">
+            <span class="onboarding-label">Trip title</span>
+            <input id="onboarding-title" type="text" maxlength="60" placeholder="Weekend in Montmartre" autocomplete="off" />
+          </label>
+          <label class="onboarding-field" for="onboarding-currency">
+            <span class="onboarding-label">Currency</span>
+            <select id="onboarding-currency">
+              <option value="EUR" selected>EUR — Euro (€)</option>
+              <option value="USD">USD — US Dollar ($)</option>
+              <option value="GBP">GBP — Pound (£)</option>
+              <option value="CHF">CHF — Swiss Franc</option>
+            </select>
+          </label>
+          <div class="onboarding-field">
+            <span class="onboarding-label">Participants</span>
+            <div id="onboarding-participant-chips" class="onboarding-chip-list" role="list" style="display: none;"></div>
+            <div class="onboarding-add">
+              <input id="onboarding-participant-input" type="text" maxlength="60" placeholder="Add a name" autocomplete="off" />
+              <button type="button" id="onboarding-add-participant" class="secondary-btn onboarding-add-btn">Add</button>
+            </div>
+          </div>
+          <button type="button" id="onboarding-start" class="primary-btn onboarding-start" onclick="window.__startTracking && window.__startTracking()">Start tracking</button>
+        </div>
       </div>
     </section>
 
@@ -57,7 +70,7 @@
           <div class="hero-card-inner hero-card-centered">
             <h1 class="hero-title" id="group-name" title="macuenta">macuenta</h1>
             <p id="header-subtitle" class="hero-total" aria-live="polite">0.00 €</p>
-            <button id="participants-summary" class="hero-participants-summary" type="button" aria-label="Manage participants">
+            <button id="participants-summary" class="hero-participants-summary" type="button" aria-label="Trip settings">
               <span class="participants-summary-count" id="participants-summary-text">Add participants</span>
               <span class="participants-summary-icon" aria-hidden="true">›</span>
             </button>
@@ -136,6 +149,14 @@
           <span class="fld-label">Title</span>
           <input id="exp-title" required maxlength="140" placeholder="e.g. Lunch" />
         </label>
+        <div class="fld">
+          <span class="fld-label">Category</span>
+          <div class="category-carousel" id="category-carousel">
+            <div class="category-carousel-track" id="category-carousel-track">
+              <!-- Icons will be populated by JavaScript -->
+            </div>
+          </div>
+        </div>
         <label class="fld">
           <span class="fld-label">Amount (EUR)</span>
           <input id="exp-amount" required type="number" min="0.01" step="0.01" placeholder="0.00" />
@@ -146,7 +167,7 @@
         </label>
         <div class="fld">
           <span class="fld-label">Payer</span>
-          <select id="exp-payer" class="fld-select">
+          <select id="exp-payer" class="fld-select" required>
             <option value="" selected>Select payer…</option>
           </select>
         </div>
@@ -173,38 +194,96 @@
     <aside class="bottom-sheet participants-sheet" id="participants-sheet" aria-hidden="true" aria-labelledby="participants-sheet-title" role="dialog">
       <div class="sheet-handle" aria-hidden="true"></div>
       <div class="sheet-header participants-sheet-header">
-        <h2 id="participants-sheet-title">Participants</h2>
+        <h2 id="participants-sheet-title">Trip Settings</h2>
         <button type="button" class="icon-btn close-btn" id="participants-sheet-close" aria-label="Close">✕</button>
       </div>
       <div class="participants-sheet-body" role="document">
-        <button type="button" class="primary-btn participants-add-btn" id="participants-sheet-add">Add participant</button>
-        <form id="participant-editor" class="participant-editor" autocomplete="off" hidden>
-          <label class="participant-editor-field" for="participant-name-input">
-            <span class="fld-label">Participant name</span>
-            <input id="participant-name-input" type="text" maxlength="60" placeholder="e.g. Ana" required />
-          </label>
-          <div class="sheet-actions participant-editor-actions">
-            <button type="button" class="secondary-btn" id="participant-editor-cancel">Cancel</button>
-            <button type="submit" class="primary-btn" id="participant-editor-submit">Add</button>
+        <div class="trip-settings-section">
+          <h3 class="trip-settings-section-title">Trip Details</h3>
+          <div class="trip-name-edit">
+            <label for="trip-name-input" class="trip-name-label">Trip name</label>
+            <div class="trip-name-input-group">
+              <input id="trip-name-input" type="text" maxlength="60" placeholder="Enter trip name..." autocomplete="off" />
+              <button type="button" class="primary-btn trip-name-save-btn" id="trip-name-save-btn">Save</button>
+            </div>
           </div>
-        </form>
-        <section class="participants-section">
-          <header class="participants-section-header">
-            <h3 class="participants-section-title">Active</h3>
-            <span class="participants-count" id="participants-active-count">0</span>
-          </header>
-          <p class="participants-hint" id="participants-sheet-empty">Add people to split expenses.</p>
-          <ul id="participants-sheet-list" class="participants-list" role="list"></ul>
-        </section>
-        <section class="participants-section archived" id="participants-archived-section" hidden>
-          <header class="participants-section-header">
-            <h3 class="participants-section-title">Archived</h3>
-            <span class="participants-count" id="participants-archived-count">0</span>
-          </header>
-          <p class="participants-hint" id="participants-archived-empty">No archived participants.</p>
-          <ul id="participants-archived-list" class="participants-list" role="list"></ul>
-        </section>
+        </div>
+        
+        <div class="trip-settings-section">
+          <h3 class="trip-settings-section-title">Participants</h3>
+          <div class="participants-add-section">
+            <div class="participants-add-input">
+              <input id="participant-name-input" type="text" maxlength="60" placeholder="Add participant name..." autocomplete="off" />
+              <button type="button" class="primary-btn participants-add-btn" id="participants-add-btn">Add</button>
+            </div>
+          </div>
+          <div class="participants-section">
+            <p class="participants-hint" id="participants-sheet-empty">Add people to split expenses.</p>
+            <ul id="participants-list" class="participants-list" role="list"></ul>
+          </div>
+        </div>
       </div>
+    </aside>
+
+    <!-- Payment Preferences Sheet -->
+    <div class="sheet-backdrop" id="payment-preferences-sheet-backdrop" hidden></div>
+    <aside class="bottom-sheet payment-preferences-sheet" id="payment-preferences-sheet" aria-hidden="true" aria-labelledby="payment-preferences-sheet-title" role="dialog">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-header">
+        <h2 id="payment-preferences-sheet-title">Payment Preferences</h2>
+        <button type="button" class="icon-btn close-btn" id="payment-preferences-sheet-close" aria-label="Close">✕</button>
+      </div>
+      <form id="payment-preferences-form" autocomplete="off" class="sheet-form">
+        <div class="payment-preferences-participant-info">
+          <div class="payment-preferences-participant-avatar" id="payment-preferences-avatar"></div>
+          <h3 id="payment-preferences-participant-name">Participant Name</h3>
+        </div>
+        
+        <div class="payment-method-section">
+          <h4 class="payment-method-section-title">Primary Payment Method</h4>
+          <label class="fld">
+            <span class="fld-label">Method</span>
+            <select id="primary-payment-method" class="fld-select">
+              <option value="">Select method...</option>
+              <option value="paypal">PayPal</option>
+              <option value="revolut">Revolut</option>
+              <option value="iban">IBAN</option>
+              <option value="cash">Cash</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label class="fld" id="primary-payment-details-field">
+            <span class="fld-label" id="primary-payment-details-label">Details</span>
+            <input id="primary-payment-details" type="text" placeholder="Enter details..." />
+            <span class="fld-error" id="primary-payment-details-error"></span>
+          </label>
+        </div>
+
+        <div class="payment-method-section">
+          <h4 class="payment-method-section-title">Secondary Payment Method <span class="payment-method-optional">(Optional)</span></h4>
+          <label class="fld">
+            <span class="fld-label">Method</span>
+            <select id="secondary-payment-method" class="fld-select">
+              <option value="">Select method...</option>
+              <option value="paypal">PayPal</option>
+              <option value="revolut">Revolut</option>
+              <option value="iban">IBAN</option>
+              <option value="cash">Cash</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label class="fld" id="secondary-payment-details-field">
+            <span class="fld-label" id="secondary-payment-details-label">Details</span>
+            <input id="secondary-payment-details" type="text" placeholder="Enter details..." />
+            <span class="fld-error" id="secondary-payment-details-error"></span>
+          </label>
+        </div>
+
+        <div class="sheet-actions">
+          <button type="button" class="secondary-btn" id="payment-preferences-cancel">Cancel</button>
+          <button type="submit" class="primary-btn">Save</button>
+        </div>
+      </form>
     </aside>
 
     <script src="i18n.js"></script>

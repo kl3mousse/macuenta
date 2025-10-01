@@ -1,5 +1,4 @@
-// macuenta - webxdc skeleton (Step 1)
-// Implements minimal event log + replay for expense.add & noop
+// macuenta
 
 (function () {
   'use strict';
@@ -22,18 +21,12 @@
   participantsSheetBackdrop: document.getElementById('participants-sheet-backdrop'),
   participantsSheet: document.getElementById('participants-sheet'),
   participantsSheetClose: document.getElementById('participants-sheet-close'),
-  participantsSheetAddBtn: document.getElementById('participants-sheet-add'),
-  participantsSheetList: document.getElementById('participants-sheet-list'),
+  participantsAddBtn: document.getElementById('participants-add-btn'),
+  participantsList: document.getElementById('participants-list'),
   participantsSheetEmpty: document.getElementById('participants-sheet-empty'),
-  participantsActiveCount: document.getElementById('participants-active-count'),
-  participantsArchivedSection: document.getElementById('participants-archived-section'),
-  participantsArchivedList: document.getElementById('participants-archived-list'),
-  participantsArchivedEmpty: document.getElementById('participants-archived-empty'),
-  participantsArchivedCount: document.getElementById('participants-archived-count'),
-  participantEditor: document.getElementById('participant-editor'),
-  participantEditorInput: document.getElementById('participant-name-input'),
-  participantEditorSubmit: document.getElementById('participant-editor-submit'),
-  participantEditorCancel: document.getElementById('participant-editor-cancel'),
+  participantNameInput: document.getElementById('participant-name-input'),
+  tripNameInput: document.getElementById('trip-name-input'),
+  tripNameSaveBtn: document.getElementById('trip-name-save-btn'),
     expenseCount: document.getElementById('expense-count'),
     expenseForm: document.getElementById('expense-form'),
     expenseTitle: document.getElementById('exp-title'),
@@ -79,6 +72,27 @@
     ledgerSheetClose: document.getElementById('ledger-sheet-close'),
     ledgerList: document.getElementById('ledger-list'),
     ledgerEmpty: document.getElementById('ledger-empty'),
+    // Payment preferences elements
+    paymentPreferencesSheet: document.getElementById('payment-preferences-sheet'),
+    paymentPreferencesSheetBackdrop: document.getElementById('payment-preferences-sheet-backdrop'),
+    paymentPreferencesSheetClose: document.getElementById('payment-preferences-sheet-close'),
+    paymentPreferencesForm: document.getElementById('payment-preferences-form'),
+    paymentPreferencesAvatar: document.getElementById('payment-preferences-avatar'),
+    paymentPreferencesParticipantName: document.getElementById('payment-preferences-participant-name'),
+    primaryPaymentMethod: document.getElementById('primary-payment-method'),
+    primaryPaymentDetails: document.getElementById('primary-payment-details'),
+    primaryPaymentDetailsField: document.getElementById('primary-payment-details-field'),
+    primaryPaymentDetailsLabel: document.getElementById('primary-payment-details-label'),
+    primaryPaymentDetailsError: document.getElementById('primary-payment-details-error'),
+    secondaryPaymentMethod: document.getElementById('secondary-payment-method'),
+    secondaryPaymentDetails: document.getElementById('secondary-payment-details'),
+    secondaryPaymentDetailsField: document.getElementById('secondary-payment-details-field'),
+    secondaryPaymentDetailsLabel: document.getElementById('secondary-payment-details-label'),
+    secondaryPaymentDetailsError: document.getElementById('secondary-payment-details-error'),
+    paymentPreferencesCancel: document.getElementById('payment-preferences-cancel'),
+    // Category carousel elements
+    categoryCarousel: document.getElementById('category-carousel'),
+    categoryCarouselTrack: document.getElementById('category-carousel-track'),
   };
 
   // ------------------------------
@@ -90,6 +104,22 @@
     USD: '$',
     GBP: '£',
     CHF: 'CHF',
+  };
+
+  const PAYMENT_METHODS = {
+    PAYPAL: 'paypal',
+    REVOLUT: 'revolut',
+    IBAN: 'iban',
+    CASH: 'cash',
+    OTHER: 'other'
+  };
+
+  const PAYMENT_METHOD_LABELS = {
+    [PAYMENT_METHODS.PAYPAL]: 'PayPal',
+    [PAYMENT_METHODS.REVOLUT]: 'Revolut',
+    [PAYMENT_METHODS.IBAN]: 'IBAN',
+    [PAYMENT_METHODS.CASH]: 'Cash',
+    [PAYMENT_METHODS.OTHER]: 'Other'
   };
 
   const state = {
@@ -119,11 +149,6 @@
     lastSelectedPayerId: null,
   };
 
-  const ui = {
-    participantEditorMode: 'idle', // 'idle' | 'add' | 'edit'
-    editingParticipantId: null,
-  };
-
   // ------------------------------
   // Types / Helpers
   // ------------------------------
@@ -147,6 +172,207 @@
     } catch (_) { /* ignore */ }
     // Fallback to a short random tag
     return 'user-' + Math.random().toString(36).slice(2, 6);
+  }
+
+  // ------------------------------
+  // Icon Component and Category Carousel
+  // ------------------------------
+  const AVAILABLE_ICONS = [
+    'receipt', // Default icon first
+    'airplane-in-flight', 'bank', 'books', 'brandy', 'bus', 'car', 'carrot', 
+    'castle-turret', 'charging-station', 'cookie',  
+    'disco-ball', 'fork-knife', 
+    'park',  'pizza', 'popcorn', 
+    'shopping-bag', 'shopping-cart', 'suitcase-rolling', 'taxi', 'tent', 
+    'ticket'
+  ];
+
+  // Cache for loaded SVG content
+  const svgCache = new Map();
+
+  /**
+   * Loads an SVG icon and returns HTML string with currentColor support
+   * @param {string} iconName - Name of the icon file (without .svg extension)
+   * @param {Object} options - Icon options
+   * @param {number} options.size - Size in pixels (default: 32)
+   * @param {boolean} options.selected - Whether icon is selected (default: false)
+   * @param {string} options.className - Additional CSS classes
+   * @returns {Promise<string>} HTML string for the icon
+   */
+  async function createIcon(iconName, options = {}) {
+    const { size = 32, selected = false, className = '' } = options;
+    
+    if (!iconName || !AVAILABLE_ICONS.includes(iconName)) {
+      iconName = 'receipt'; // fallback
+    }
+
+    // Check cache first
+    let svgContent = svgCache.get(iconName);
+    if (!svgContent) {
+      try {
+        const response = await fetch(`./icons/${iconName}.svg`);
+        if (!response.ok) throw new Error(`Failed to load ${iconName}.svg`);
+        svgContent = await response.text();
+        
+        // Process SVG to support currentColor
+        svgContent = svgContent
+          .replace(/fill="#[^"]*"/g, 'fill="currentColor"')
+          .replace(/stroke="#[^"]*"/g, 'stroke="currentColor"')
+          .replace(/width="[^"]*"/g, `width="${size}"`)
+          .replace(/height="[^"]*"/g, `height="${size}"`);
+        
+        svgCache.set(iconName, svgContent);
+      } catch (error) {
+        console.warn(`Failed to load icon ${iconName}:`, error);
+        // Return a simple fallback
+        svgContent = `<svg width="${size}" height="${size}" viewBox="0 0 32 32" fill="currentColor"><circle cx="16" cy="16" r="12"/></svg>`;
+      }
+    }
+
+    const classes = `icon ${selected ? 'icon-selected' : ''} ${className}`.trim();
+    return `<span class="${classes}" data-icon="${iconName}" style="width:${size}px;height:${size}px;display:inline-flex;align-items:center;justify-content:center;">${svgContent}</span>`;
+  }
+
+  /**
+   * Synchronous version that returns a placeholder until SVG loads
+   */
+  function createIconSync(iconName, options = {}) {
+    const { size = 32, selected = false, className = '' } = options;
+    const classes = `icon ${selected ? 'icon-selected' : ''} ${className}`.trim();
+    
+    createIcon(iconName, options).then(html => {
+      // Find and replace placeholder icons
+      document.querySelectorAll(`[data-icon-placeholder="${iconName}"]`).forEach(placeholder => {
+        placeholder.outerHTML = html;
+      });
+    });
+
+    return `<span class="${classes}" data-icon-placeholder="${iconName}" style="width:${size}px;height:${size}px;display:inline-flex;align-items:center;justify-content:center;">⏳</span>`;
+  }
+
+  // Category carousel state
+  let selectedCategory = 'receipt'; // Default to receipt
+
+  function initializeCategoryCarousel() {
+    const carousel = document.getElementById('category-carousel-track');
+    if (!carousel) return;
+
+    console.log('Initializing category carousel with selectedCategory:', selectedCategory); // Debug log
+
+    // Create icon buttons for the carousel
+    const iconPromises = AVAILABLE_ICONS.map(async iconName => {
+      const iconHtml = await createIcon(iconName, { 
+        size: 32, 
+        selected: iconName === selectedCategory,
+        className: 'category-carousel-icon'
+      });
+      return {
+        iconName,
+        html: `<button type="button" class="category-carousel-btn ${iconName === selectedCategory ? 'selected' : ''}" data-icon="${iconName}" aria-label="Select ${iconName} category">${iconHtml}</button>`
+      };
+    });
+
+    Promise.all(iconPromises).then(iconData => {
+      carousel.innerHTML = iconData.map(item => item.html).join('');
+      
+      // Add click handlers
+      carousel.querySelectorAll('.category-carousel-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const iconName = btn.getAttribute('data-icon');
+          console.log('Category button clicked:', iconName); // Debug log
+          selectCategory(iconName);
+        });
+      });
+      
+      console.log('Category carousel initialized with', carousel.children.length, 'buttons'); // Debug log
+    });
+  }
+
+  function selectCategory(iconName) {
+    selectedCategory = iconName;
+    console.log('Selected category:', iconName); // Debug log
+    
+    // Update visual selection in carousel
+    const carousel = document.getElementById('category-carousel-track');
+    if (carousel) {
+      carousel.querySelectorAll('.category-carousel-btn').forEach(btn => {
+        const isSelected = btn.getAttribute('data-icon') === iconName;
+        btn.classList.toggle('selected', isSelected);
+        
+        // Update icon selected state
+        const icon = btn.querySelector('.icon');
+        if (icon) {
+          icon.classList.toggle('icon-selected', isSelected);
+        }
+      });
+    }
+  }
+
+  // ------------------------------
+  // Payment Method Validation
+  // ------------------------------
+  function validatePaymentDetails(method, details) {
+    if (!method || !details) return { valid: true };
+    
+    const trimmed = details.trim();
+    if (!trimmed) return { valid: true };
+
+    switch (method) {
+      case PAYMENT_METHODS.PAYPAL:
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return {
+          valid: emailRegex.test(trimmed),
+          message: emailRegex.test(trimmed) ? '' : 'Please enter a valid email address'
+        };
+      
+      case PAYMENT_METHODS.REVOLUT:
+        const revolutRegex = /^@[a-zA-Z0-9_]+$/;
+        const hasAt = trimmed.startsWith('@');
+        return {
+          valid: hasAt && trimmed.length > 1 && /^@[a-zA-Z0-9_]+$/.test(trimmed),
+          message: hasAt && trimmed.length > 1 && /^@[a-zA-Z0-9_]+$/.test(trimmed) ? '' : 'Please enter a valid @username'
+        };
+      
+      case PAYMENT_METHODS.IBAN:
+        // Basic IBAN validation (simplified)
+        const ibanRegex = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{4}[0-9]{7}([A-Z0-9]?){0,16}$/;
+        const upperTrimmed = trimmed.replace(/\s/g, '').toUpperCase();
+        return {
+          valid: ibanRegex.test(upperTrimmed),
+          message: ibanRegex.test(upperTrimmed) ? '' : 'Please enter a valid IBAN'
+        };
+      
+      case PAYMENT_METHODS.CASH:
+        return { valid: true }; // Cash doesn't need details
+      
+      case PAYMENT_METHODS.OTHER:
+        return {
+          valid: trimmed.length > 0,
+          message: trimmed.length > 0 ? '' : 'Please enter payment details'
+        };
+      
+      default:
+        return { valid: true };
+    }
+  }
+
+  function getPaymentMethodPlaceholder(method) {
+    switch (method) {
+      case PAYMENT_METHODS.PAYPAL:
+        return 'email@example.com';
+      case PAYMENT_METHODS.REVOLUT:
+        return '@username';
+      case PAYMENT_METHODS.IBAN:
+        return 'GB82 WEST 1234 5698 7654 32';
+      case PAYMENT_METHODS.CASH:
+        return 'No details needed';
+      case PAYMENT_METHODS.OTHER:
+        return 'Enter payment details...';
+      default:
+        return '';
+    }
   }
 
   function activeCurrency() {
@@ -411,15 +637,16 @@
     }
   }
 
-  function createExpense({ title, amountMinor, splits }) {
+  function createExpense({ title, amountMinor, splits, category }) {
     return {
       id: randomId(),
       rev: 1,
       description: title,
       amountMinor,
-  currency: activeCurrency(),
+      currency: activeCurrency(),
       payer: state.actorName,
       splits: Array.isArray(splits) ? splits : [],
+      category: category || 'receipt',
       createdAt: Date.now(),
       createdBy: state.clientId,
     };
@@ -655,29 +882,40 @@
     }
     if (el.participantsSummary) {
       el.participantsSummary.addEventListener('click', () => {
-        openParticipantsSheet();
+        openTripSettingsSheet();
       });
     }
-    if (el.participantsSheetAddBtn) {
-      el.participantsSheetAddBtn.addEventListener('click', () => {
-        showParticipantEditor('add');
+    if (el.participantsAddBtn) {
+      el.participantsAddBtn.addEventListener('click', () => {
+        handleAddParticipant();
+      });
+    }
+    if (el.participantNameInput) {
+      el.participantNameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleAddParticipant();
+        }
+      });
+    }
+    if (el.tripNameSaveBtn) {
+      el.tripNameSaveBtn.addEventListener('click', () => {
+        handleTripNameSave();
+      });
+    }
+    if (el.tripNameInput) {
+      el.tripNameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleTripNameSave();
+        }
       });
     }
     // Ledger open / close
     hydrateLedgerElements();
-    if (el.participantEditor) {
-      el.participantEditor.addEventListener('submit', handleParticipantEditorSubmit);
-    }
-    if (el.participantEditorCancel) {
-      el.participantEditorCancel.addEventListener('click', () => {
-        resetParticipantEditor();
-      });
-    }
-    if (el.participantsSheetList) {
-      el.participantsSheetList.addEventListener('click', handleParticipantListAction);
-    }
-    if (el.participantsArchivedList) {
-      el.participantsArchivedList.addEventListener('click', handleParticipantListAction);
+    if (el.participantsList) {
+      el.participantsList.addEventListener('click', handleParticipantListAction);
+      el.participantsList.addEventListener('keydown', handleParticipantListAction);
     }
     // Hash based routing (optional fallback)
     window.addEventListener('hashchange', () => {
@@ -882,6 +1120,9 @@
       el.expenseDate.max = iso; // prevent future dates for now
       if (!el.expenseDate.value) el.expenseDate.value = iso;
     }
+    // Initialize category carousel (will preserve selection if already set)
+    initializeCategoryCarousel();
+    console.log('Expense sheet opened, current selectedCategory:', selectedCategory); // Debug log
     // Preselect payer: lastSelectedPayerId if still active, else blank
     if (el.payerSelect) {
       const optsIds = Array.from(el.payerSelect.options).map(o=>o.value);
@@ -895,24 +1136,36 @@
     setTimeout(()=>{ el.expenseTitle && el.expenseTitle.focus(); }, 60);
   }
   function closeExpenseSheet() {
+    console.log('closeExpenseSheet called, resetting category from', selectedCategory, 'to receipt'); // Debug log
     sheet.backdrop?.classList.remove('is-open');
     sheet.panel?.classList.remove('is-open');
     sheet.panel?.setAttribute('aria-hidden','true');
+    // Reset category selection to default
+    selectedCategory = 'receipt';
     setTimeout(()=>{ if (sheet.backdrop) sheet.backdrop.hidden = true; }, 280);
   }
   window.__openExpenseSheet = openExpenseSheet;
+  
+  // Debug helper
+  window.__getSelectedCategory = () => selectedCategory;
+  window.__setSelectedCategory = (cat) => { selectedCategory = cat; console.log('Category set to:', cat); };
 
-  function openParticipantsSheet() {
+  function openTripSettingsSheet() {
     renderParticipantsSheet();
+    
+    // Populate current trip name
+    if (el.tripNameInput) {
+      el.tripNameInput.value = state.meta.title || '';
+    }
+    
     if (participantsSheet.backdrop) participantsSheet.backdrop.hidden = false;
     requestAnimationFrame(() => {
       participantsSheet.backdrop?.classList.add('is-open');
       participantsSheet.panel?.classList.add('is-open');
     });
     participantsSheet.panel?.setAttribute('aria-hidden', 'false');
-    resetParticipantEditor();
     setTimeout(() => {
-      el.participantsSheetAddBtn && el.participantsSheetAddBtn.focus();
+      el.tripNameInput && el.tripNameInput.focus();
     }, 80);
   }
 
@@ -922,10 +1175,9 @@
     participantsSheet.panel?.setAttribute('aria-hidden', 'true');
     setTimeout(() => {
       if (participantsSheet.backdrop) participantsSheet.backdrop.hidden = true;
-      resetParticipantEditor();
     }, 280);
   }
-  window.__openParticipantsSheet = openParticipantsSheet;
+  window.__openParticipantsSheet = openTripSettingsSheet;
 
   // Hook close events
   sheet.backdrop && sheet.backdrop.addEventListener('click', (e)=>{ if (e.target === sheet.backdrop) closeExpenseSheet(); });
@@ -933,8 +1185,25 @@
   sheet.cancelBtn && sheet.cancelBtn.addEventListener('click', closeExpenseSheet);
   participantsSheet.backdrop && participantsSheet.backdrop.addEventListener('click', (e)=>{ if (e.target === participantsSheet.backdrop) closeParticipantsSheet(); });
   participantsSheet.closeBtn && participantsSheet.closeBtn.addEventListener('click', closeParticipantsSheet);
+  
+  // Payment preferences sheet event listeners
+  el.paymentPreferencesSheetBackdrop && el.paymentPreferencesSheetBackdrop.addEventListener('click', (e) => {
+    if (e.target === el.paymentPreferencesSheetBackdrop) closePaymentPreferencesSheet();
+  });
+  el.paymentPreferencesSheetClose && el.paymentPreferencesSheetClose.addEventListener('click', closePaymentPreferencesSheet);
+  el.paymentPreferencesCancel && el.paymentPreferencesCancel.addEventListener('click', closePaymentPreferencesSheet);
+  el.paymentPreferencesForm && el.paymentPreferencesForm.addEventListener('submit', handlePaymentPreferencesSubmit);
+  
+  // Payment method change handlers
+  el.primaryPaymentMethod && el.primaryPaymentMethod.addEventListener('change', () => updatePaymentDetailsField('primary'));
+  el.secondaryPaymentMethod && el.secondaryPaymentMethod.addEventListener('change', () => updatePaymentDetailsField('secondary'));
+  
   document.addEventListener('keydown', (e)=>{
     if (e.key !== 'Escape') return;
+    if (el.paymentPreferencesSheet?.classList.contains('is-open')) {
+      closePaymentPreferencesSheet();
+      return;
+    }
     if (participantsSheet.panel?.classList.contains('is-open')) {
       closeParticipantsSheet();
       return;
@@ -947,7 +1216,10 @@
   // Intercept form submit to close sheet after existing logic
   if (sheet.form) {
     sheet.form.addEventListener('submit', () => {
-      closeExpenseSheet();
+      // Delay the close to allow expense creation to complete first
+      setTimeout(() => {
+        closeExpenseSheet();
+      }, 100);
     });
   }
 
@@ -997,12 +1269,24 @@
   function expenseCardHTML(exp) {
     const payerName = resolveParticipantName(exp.payer) || exp.payer;
     const you = payerName === state.actorName ? 'you' : payerName;
-    const visual = expenseVisualFor(exp);
+    const category = exp.category || 'receipt';
     const amountText = escapeHtml(formatAmountDisplay(exp.amountMinor, exp.currency || activeCurrency()));
     const deleteLabel = `Delete expense ${exp.description || ''}`.trim() || 'Delete expense';
+    
+    // Create a placeholder for the icon that will be filled asynchronously
+    const iconId = `expense-icon-${exp.id}`;
+    
+    // Asynchronously load the icon
+    createIcon(category, { size: 20, className: 'expense-category-icon' }).then(iconHtml => {
+      const iconElement = document.getElementById(iconId);
+      if (iconElement) {
+        iconElement.innerHTML = iconHtml;
+      }
+    });
+    
     return `<li class="expense-card" data-expense-id="${escapeHtml(exp.id)}">
       <div class="expense-card-main">
-        <span class="expense-icon" style="background:${visual.background};color:${visual.color};">${escapeHtml(visual.glyph)}</span>
+        <span id="${iconId}" class="expense-icon-container"></span>
         <div class="expense-body">
           <p class="expense-title">${escapeHtml(exp.description || '(no title)')}</p>
           <p class="expense-subtitle">Paid by ${escapeHtml(you)}</p>
@@ -1029,15 +1313,55 @@
     const fromName = resolveParticipantName(s.from) || s.from;
     const toName = resolveParticipantName(s.to) || s.to;
     const actionLabel = 'Record';
+    
+    // Get payment preferences for the recipient
+    const toParticipant = state.participants.get(s.to);
+    const paymentPreferencesHTML = getPaymentPreferencesHTML(toParticipant);
+    
     return `<li class="settlement-item" data-from="${escapeHtml(s.from)}" data-to="${escapeHtml(s.to)}" data-amt="${s.amountMinor}">
       <div class="settlement-main">
         <span class="settlement-route" title="${escapeHtml(fromName)} → ${escapeHtml(toName)}">${escapeHtml(fromName)} → ${escapeHtml(toName)}</span>
+        ${paymentPreferencesHTML}
       </div>
       <div class="settlement-meta">
         <span class="settlement-amount">${escapeHtml(amt)}</span>
         <button type="button" class="record-settlement-btn" data-action="record" aria-label="Record settlement">${escapeHtml(actionLabel)}</button>
       </div>
     </li>`;
+  }
+
+  function getPaymentPreferencesHTML(participant) {
+    if (!participant) return '';
+    
+    const preferences = [];
+    
+    if (participant.primaryPaymentMethod) {
+      const method = PAYMENT_METHOD_LABELS[participant.primaryPaymentMethod] || participant.primaryPaymentMethod;
+      const details = participant.primaryPaymentDetails;
+      preferences.push({ method, details, isPrimary: true });
+    }
+    
+    if (participant.secondaryPaymentMethod) {
+      const method = PAYMENT_METHOD_LABELS[participant.secondaryPaymentMethod] || participant.secondaryPaymentMethod;
+      const details = participant.secondaryPaymentDetails;
+      preferences.push({ method, details, isPrimary: false });
+    }
+    
+    if (preferences.length === 0) return '';
+    
+    const preferenceItems = preferences.map(pref => {
+      const copyButton = pref.details && pref.method !== 'Cash' ? 
+        `<button type="button" class="payment-copy-btn" data-copy="${escapeHtml(pref.details)}" title="Copy ${escapeHtml(pref.details)}">📋</button>` : '';
+      
+      const detailsText = pref.details ? `: ${escapeHtml(pref.details)}` : '';
+      
+      return `<div class="payment-preference-item${pref.isPrimary ? ' primary' : ''}">
+        <span class="payment-method-label">${escapeHtml(pref.method)}${detailsText}</span>
+        ${copyButton}
+      </div>`;
+    }).join('');
+    
+    return `<div class="payment-preferences">${preferenceItems}</div>`;
   }
 
   function completedSettlementListItemHTML(s) {
@@ -1266,7 +1590,7 @@
   function markOnboardingCompletedIfReady() {
     if (state.onboardingCompleted) return;
     const hasTitle = Boolean(state.meta.title && state.meta.title.trim());
-    const hasParticipants = activeParticipants().length > 0;
+    const hasParticipants = activeParticipants().length >= 2;
     if (hasTitle && hasParticipants) {
       state.onboardingCompleted = true;
     }
@@ -1306,175 +1630,232 @@
       lastModifiedAt: Date.now(),
       lastModifiedBy: state.clientId,
       color: accent.background,
+      primaryPaymentMethod: null,
+      primaryPaymentDetails: null,
+      secondaryPaymentMethod: null,
+      secondaryPaymentDetails: null,
     };
   }
 
   function renderParticipantsSheet() {
-    if (!el.participantsSheetList) return;
-    const participants = Array.from(state.participants.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
-    const active = participants.filter(p => !p.archived);
-    const archived = participants.filter(p => p.archived);
-
-    el.participantsSheetList.innerHTML = active.map(p => participantManagerItemHTML(p)).join('');
-    if (el.participantsSheetEmpty) {
-      el.participantsSheetEmpty.style.display = active.length ? 'none' : 'block';
-    }
-    if (el.participantsActiveCount) {
-      el.participantsActiveCount.textContent = String(active.length);
-    }
-
-    if (el.participantsArchivedSection) {
-      el.participantsArchivedSection.hidden = archived.length === 0;
-    }
-    if (el.participantsArchivedList) {
-      el.participantsArchivedList.innerHTML = archived.map(p => participantManagerItemHTML(p, { archived: true })).join('');
-    }
-    if (el.participantsArchivedEmpty) {
-      el.participantsArchivedEmpty.style.display = archived.length ? 'none' : 'block';
-    }
-    if (el.participantsArchivedCount) {
-      el.participantsArchivedCount.textContent = String(archived.length);
-    }
-
-    if (ui.participantEditorMode === 'edit' && ui.editingParticipantId) {
-      const editing = state.participants.get(ui.editingParticipantId);
-      if (!editing) {
-        resetParticipantEditor();
-      } else if (el.participantEditorInput && el.participantEditor && !el.participantEditor.hidden) {
-        el.participantEditorInput.value = editing.displayName;
+    if (!el.participantsList) return;
+    const participants = Array.from(state.participants.values()).sort((a, b) => {
+      // Sort: active first, then archived, alphabetically within each group
+      if (a.archived !== b.archived) {
+        return a.archived ? 1 : -1;
       }
+      return a.displayName.localeCompare(b.displayName);
+    });
+
+    el.participantsList.innerHTML = participants.map(p => participantRowHTML(p)).join('');
+    
+    if (el.participantsSheetEmpty) {
+      el.participantsSheetEmpty.style.display = participants.length ? 'none' : 'block';
     }
   }
 
-  function participantManagerItemHTML(participant, opts = {}) {
-    const archived = opts.archived === true ? true : participant.archived === true;
+  function participantRowHTML(participant) {
     const accent = accentFromString(participant.displayName || participant.id);
     const initials = initialsFor(participant.displayName);
-    const badge = participant.id === state.localParticipantId ? '<span class="participant-row-badge">You</span>' : '';
-    const actionButtons = archived
-      ? `<button type="button" class="ghost-btn" data-action="restore" data-id="${escapeHtml(participant.id)}">Restore</button>
-        <button type="button" class="ghost-btn" data-action="rename" data-id="${escapeHtml(participant.id)}">Rename</button>`
-      : `<button type="button" class="ghost-btn" data-action="rename" data-id="${escapeHtml(participant.id)}">Rename</button>
-        <button type="button" class="ghost-btn danger" data-action="archive" data-id="${escapeHtml(participant.id)}">Archive</button>`;
-    return `<li class="participant-row" data-id="${escapeHtml(participant.id)}">
-      <div class="participant-row-main">
+    const isYou = participant.id === state.localParticipantId;
+    const isArchived = participant.archived === true;
+    
+    // Check if user has non-zero balance
+    const balance = state.balances.get(participant.id) || 0;
+    const hasBalance = balance !== 0;
+    
+    const badge = isArchived ? '<span class="participant-row-badge archived-label">Archived</span>' : '';
+    
+    const actionButton = isArchived 
+      ? `<button type="button" class="participant-action-btn" data-action="restore" data-id="${escapeHtml(participant.id)}">Restore</button>`
+      : `<button type="button" class="participant-action-btn danger${hasBalance ? ' disabled' : ''}" data-action="archive" data-id="${escapeHtml(participant.id)}"${hasBalance ? ' disabled title="Cannot archive participant with non-zero balance"' : ''}>Archive</button>`;
+    
+    return `<li class="participant-row${isArchived ? ' archived' : ''}" data-id="${escapeHtml(participant.id)}">
         <div class="participant-avatar" style="background:${accent.background};color:${accent.color};">${escapeHtml(initials)}</div>
-        <div class="participant-row-text">
-          <span class="participant-row-name">${escapeHtml(participant.displayName)}</span>
+        <div class="participant-row-main">
+          <span class="participant-row-name" data-id="${escapeHtml(participant.id)}">${escapeHtml(participant.displayName)}</span>
+          <input type="text" class="participant-row-name-input" data-id="${escapeHtml(participant.id)}" value="${escapeHtml(participant.displayName)}" maxlength="60" style="display: none;" />
           ${badge}
         </div>
-      </div>
-      <div class="participant-row-actions">
-        ${actionButtons}
-      </div>
+        <div class="participant-row-actions">
+          <button type="button" class="participant-action-btn" data-action="edit" data-id="${escapeHtml(participant.id)}">Edit</button>
+          <button type="button" class="participant-action-btn" data-action="payment" data-id="${escapeHtml(participant.id)}">Payment prefs</button>
+          ${actionButton}
+        </div>
     </li>`;
   }
 
-  function showParticipantEditor(mode, participantId) {
-    if (!el.participantEditor) return;
-    ui.participantEditorMode = mode;
-    ui.editingParticipantId = mode === 'edit' ? participantId : null;
-    el.participantEditor.hidden = false;
-    el.participantEditor.setAttribute('data-mode', mode);
-    if (mode === 'edit' && participantId) {
-      const existing = state.participants.get(participantId);
-      if (existing && el.participantEditorInput) {
-        el.participantEditorInput.value = existing.displayName;
-      }
-    } else if (el.participantEditorInput) {
-      el.participantEditorInput.value = '';
+  function handleTripNameSave() {
+    if (!el.tripNameInput) return;
+    
+    const newTitle = el.tripNameInput.value.trim();
+    if (!newTitle) {
+      showToast('Enter a trip name', 'warn');
+      el.tripNameInput.focus();
+      return;
     }
-    if (el.participantEditorSubmit) {
-      el.participantEditorSubmit.textContent = mode === 'edit' ? 'Save changes' : 'Add';
+    
+    if (newTitle === state.meta.title) {
+      showToast('Trip name unchanged', 'warn');
+      return;
     }
-    requestAnimationFrame(() => {
-      if (el.participantEditorInput) {
-        el.participantEditorInput.focus();
-        if (mode === 'edit') {
-          el.participantEditorInput.select();
-        }
-      }
-    });
+
+    const payload = {
+      title: newTitle,
+      currency: state.meta.currency || DEFAULT_CURRENCY,
+    };
+    
+    applyMetaPatch(payload);
+    render();
+    broadcastMetaPatch(payload);
+    showToast('Trip name updated', 'success');
   }
 
-  function resetParticipantEditor() {
-    ui.participantEditorMode = 'idle';
-    ui.editingParticipantId = null;
-    if (el.participantEditor) {
-      el.participantEditor.hidden = true;
-      el.participantEditor.removeAttribute('data-mode');
-    }
-    if (el.participantEditorInput) {
-      el.participantEditorInput.value = '';
-    }
-    if (el.participantEditorSubmit) {
-      el.participantEditorSubmit.textContent = 'Add';
-    }
-  }
-
-  function handleParticipantEditorSubmit(event) {
-    event.preventDefault();
-    if (!el.participantEditorInput) return;
-    const name = cleanName(el.participantEditorInput.value);
+  function handleAddParticipant() {
+    if (!el.participantNameInput) return;
+    
+    const name = cleanName(el.participantNameInput.value);
     if (!name) {
       showToast('Enter a participant name', 'warn');
-      el.participantEditorInput.focus();
+      el.participantNameInput.focus();
       return;
     }
-    const excludeId = ui.participantEditorMode === 'edit' ? ui.editingParticipantId : null;
-    if (nameAlreadyExists(name, excludeId)) {
+    
+    if (nameAlreadyExists(name)) {
       showToast('That name is already in use', 'warn');
-      el.participantEditorInput.focus();
-      el.participantEditorInput.select();
+      el.participantNameInput.focus();
+      el.participantNameInput.select();
       return;
     }
 
-    if (ui.participantEditorMode === 'edit' && ui.editingParticipantId) {
-      const existing = state.participants.get(ui.editingParticipantId);
-      if (!existing) {
-        showToast('Participant not found', 'error');
-        resetParticipantEditor();
-        renderParticipantsSheet();
-        return;
-      }
-      const payload = {
-        ...existing,
-        displayName: name,
-        lastModifiedAt: Date.now(),
-        lastModifiedBy: state.clientId,
-      };
-      editParticipantFromEvent(payload);
-      render();
-      broadcastParticipantEdit(payload);
-      showToast('Participant updated', 'success');
-    } else {
-      const payload = createParticipantPayload(name);
-      upsertParticipantFromEvent(payload);
-      render();
-      broadcastParticipantAdd(payload);
-      showToast('Participant added', 'success');
+    const payload = createParticipantPayload(name);
+    upsertParticipantFromEvent(payload);
+    render();
+    broadcastParticipantAdd(payload);
+    showToast('Participant added', 'success');
+    
+    // Clear input
+    el.participantNameInput.value = '';
+    el.participantNameInput.focus();
+  }
+
+  function handleInlineEdit(participantId, newName) {
+    const existing = state.participants.get(participantId);
+    if (!existing) {
+      showToast('Participant not found', 'error');
+      return;
     }
-    resetParticipantEditor();
+    
+    const cleaned = cleanName(newName);
+    if (!cleaned) {
+      showToast('Enter a participant name', 'warn');
+      return;
+    }
+    
+    if (nameAlreadyExists(cleaned, participantId)) {
+      showToast('That name is already in use', 'warn');
+      return;
+    }
+
+    const payload = {
+      ...existing,
+      displayName: cleaned,
+      lastModifiedAt: Date.now(),
+      lastModifiedBy: state.clientId,
+    };
+    
+    editParticipantFromEvent(payload);
+    render();
+    broadcastParticipantEdit(payload);
+    showToast('Participant updated', 'success');
   }
 
   function handleParticipantListAction(event) {
     const btn = event.target && event.target.closest && event.target.closest('[data-action][data-id]');
-    if (!btn) return;
-    const action = btn.getAttribute('data-action');
-    const id = btn.getAttribute('data-id');
-    if (!action || !id) return;
-    if (action === 'rename') {
-      showParticipantEditor('edit', id);
-    } else if (action === 'archive') {
-      archiveParticipant(id);
-    } else if (action === 'restore') {
-      restoreParticipant(id);
+    if (btn) {
+      const action = btn.getAttribute('data-action');
+      const id = btn.getAttribute('data-id');
+      if (!action || !id) return;
+      
+      if (action === 'edit') {
+        toggleInlineEdit(id);
+      } else if (action === 'archive') {
+        archiveParticipant(id);
+      } else if (action === 'restore') {
+        restoreParticipant(id);
+      } else if (action === 'payment') {
+        openPaymentPreferencesSheet(id);
+      }
+      return;
+    }
+    
+    // Handle inline editing input events
+    const input = event.target && event.target.closest && event.target.closest('.participant-row-name-input');
+    if (input && event.type === 'keydown') {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const id = input.getAttribute('data-id');
+        const newName = input.value;
+        handleInlineEdit(id, newName);
+        exitInlineEdit(id);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        exitInlineEdit(input.getAttribute('data-id'));
+      }
+    }
+  }
+  
+  function toggleInlineEdit(participantId) {
+    const row = document.querySelector(`[data-id="${participantId}"]`);
+    if (!row) return;
+    
+    const nameSpan = row.querySelector('.participant-row-name');
+    const nameInput = row.querySelector('.participant-row-name-input');
+    
+    if (!nameSpan || !nameInput) return;
+    
+    if (nameInput.style.display === 'none') {
+      // Enter edit mode
+      nameSpan.style.display = 'none';
+      nameInput.style.display = 'block';
+      nameInput.focus();
+      nameInput.select();
+    } else {
+      // Exit edit mode
+      exitInlineEdit(participantId);
+    }
+  }
+  
+  function exitInlineEdit(participantId) {
+    const row = document.querySelector(`[data-id="${participantId}"]`);
+    if (!row) return;
+    
+    const nameSpan = row.querySelector('.participant-row-name');
+    const nameInput = row.querySelector('.participant-row-name-input');
+    
+    if (!nameSpan || !nameInput) return;
+    
+    nameSpan.style.display = 'block';
+    nameInput.style.display = 'none';
+    
+    // Reset input value to original
+    const participant = state.participants.get(participantId);
+    if (participant) {
+      nameInput.value = participant.displayName;
     }
   }
 
   function archiveParticipant(id) {
     const participant = state.participants.get(id);
     if (!participant || participant.archived) return;
+    
+    // Check if participant has non-zero balance
+    const balance = state.balances.get(id) || 0;
+    if (balance !== 0) {
+      showToast('Cannot archive participant with non-zero balance', 'warn');
+      return;
+    }
+    
     const active = activeParticipants();
     if (active.length <= 1) {
       showToast('Keep at least one participant active', 'warn');
@@ -1505,6 +1886,228 @@
     render();
     broadcastParticipantEdit(payload);
     showToast('Participant restored', 'success');
+  }
+
+  // ------------------------------
+  // Payment Preferences Functions
+  // ------------------------------
+  let currentEditingParticipantId = null;
+
+  function openPaymentPreferencesSheet(participantId) {
+    const participant = state.participants.get(participantId);
+    if (!participant) {
+      showToast('Participant not found', 'error');
+      return;
+    }
+
+    currentEditingParticipantId = participantId;
+    
+    // Update participant info
+    if (el.paymentPreferencesParticipantName) {
+      el.paymentPreferencesParticipantName.textContent = participant.displayName;
+    }
+    
+    if (el.paymentPreferencesAvatar) {
+      const accent = accentFromString(participant.displayName || participant.id);
+      const initials = initialsFor(participant.displayName);
+      el.paymentPreferencesAvatar.style.background = accent.background;
+      el.paymentPreferencesAvatar.style.color = accent.color;
+      el.paymentPreferencesAvatar.textContent = initials;
+    }
+
+    // Populate existing values
+    if (el.primaryPaymentMethod) {
+      el.primaryPaymentMethod.value = participant.primaryPaymentMethod || '';
+    }
+    if (el.primaryPaymentDetails) {
+      el.primaryPaymentDetails.value = participant.primaryPaymentDetails || '';
+    }
+    if (el.secondaryPaymentMethod) {
+      el.secondaryPaymentMethod.value = participant.secondaryPaymentMethod || '';
+    }
+    if (el.secondaryPaymentDetails) {
+      el.secondaryPaymentDetails.value = participant.secondaryPaymentDetails || '';
+    }
+
+    // Update UI based on selected methods
+    updatePaymentDetailsField('primary');
+    updatePaymentDetailsField('secondary');
+
+    // Show sheet
+    if (el.paymentPreferencesSheetBackdrop) {
+      el.paymentPreferencesSheetBackdrop.hidden = false;
+    }
+    requestAnimationFrame(() => {
+      if (el.paymentPreferencesSheet) {
+        el.paymentPreferencesSheet.classList.add('is-open');
+        el.paymentPreferencesSheet.removeAttribute('aria-hidden');
+      }
+    });
+  }
+
+  function closePaymentPreferencesSheet() {
+    if (el.paymentPreferencesSheet) {
+      el.paymentPreferencesSheet.classList.remove('is-open');
+      el.paymentPreferencesSheet.setAttribute('aria-hidden', 'true');
+    }
+    setTimeout(() => {
+      if (el.paymentPreferencesSheetBackdrop) {
+        el.paymentPreferencesSheetBackdrop.hidden = true;
+      }
+    }, 280);
+    currentEditingParticipantId = null;
+  }
+
+  function updatePaymentDetailsField(type) {
+    const methodElement = type === 'primary' ? el.primaryPaymentMethod : el.secondaryPaymentMethod;
+    const detailsElement = type === 'primary' ? el.primaryPaymentDetails : el.secondaryPaymentDetails;
+    const fieldElement = type === 'primary' ? el.primaryPaymentDetailsField : el.secondaryPaymentDetailsField;
+    const labelElement = type === 'primary' ? el.primaryPaymentDetailsLabel : el.secondaryPaymentDetailsLabel;
+    const errorElement = type === 'primary' ? el.primaryPaymentDetailsError : el.secondaryPaymentDetailsError;
+
+    if (!methodElement || !detailsElement || !fieldElement || !labelElement) return;
+
+    const method = methodElement.value;
+    const isRequired = type === 'primary' && method;
+    const needsDetails = method && method !== PAYMENT_METHODS.CASH;
+
+    if (needsDetails) {
+      fieldElement.style.display = 'block';
+      detailsElement.placeholder = getPaymentMethodPlaceholder(method);
+      detailsElement.disabled = false;
+      labelElement.textContent = getPaymentMethodDetailsLabel(method);
+      if (method === PAYMENT_METHODS.CASH) {
+        detailsElement.value = '';
+        detailsElement.disabled = true;
+      }
+    } else {
+      if (!method) {
+        fieldElement.style.display = 'none';
+      } else {
+        fieldElement.style.display = 'block';
+        detailsElement.disabled = true;
+        detailsElement.value = '';
+        detailsElement.placeholder = getPaymentMethodPlaceholder(method);
+      }
+    }
+
+    // Clear validation error when method changes
+    if (errorElement) {
+      errorElement.textContent = '';
+      errorElement.style.display = 'none';
+    }
+  }
+
+  function getPaymentMethodDetailsLabel(method) {
+    switch (method) {
+      case PAYMENT_METHODS.PAYPAL:
+        return 'Email address';
+      case PAYMENT_METHODS.REVOLUT:
+        return 'Username';
+      case PAYMENT_METHODS.IBAN:
+        return 'IBAN';
+      case PAYMENT_METHODS.CASH:
+        return 'Details';
+      case PAYMENT_METHODS.OTHER:
+        return 'Details';
+      default:
+        return 'Details';
+    }
+  }
+
+  function handlePaymentPreferencesSubmit(event) {
+    event.preventDefault();
+    
+    if (!currentEditingParticipantId) {
+      showToast('No participant selected', 'error');
+      return;
+    }
+
+    const participant = state.participants.get(currentEditingParticipantId);
+    if (!participant) {
+      showToast('Participant not found', 'error');
+      return;
+    }
+
+    // Collect form data
+    const primaryMethod = el.primaryPaymentMethod ? el.primaryPaymentMethod.value : '';
+    const primaryDetails = el.primaryPaymentDetails ? el.primaryPaymentDetails.value.trim() : '';
+    const secondaryMethod = el.secondaryPaymentMethod ? el.secondaryPaymentMethod.value : '';
+    const secondaryDetails = el.secondaryPaymentDetails ? el.secondaryPaymentDetails.value.trim() : '';
+
+    // Validate
+    let hasError = false;
+
+    if (primaryMethod) {
+      const validation = validatePaymentDetails(primaryMethod, primaryDetails);
+      if (!validation.valid) {
+        showPaymentValidationError('primary', validation.message);
+        hasError = true;
+      }
+    }
+
+    if (secondaryMethod) {
+      const validation = validatePaymentDetails(secondaryMethod, secondaryDetails);
+      if (!validation.valid) {
+        showPaymentValidationError('secondary', validation.message);
+        hasError = true;
+      }
+    }
+
+    if (hasError) return;
+
+    // Update participant
+    const payload = {
+      ...participant,
+      primaryPaymentMethod: primaryMethod || null,
+      primaryPaymentDetails: primaryDetails || null,
+      secondaryPaymentMethod: secondaryMethod || null,
+      secondaryPaymentDetails: secondaryDetails || null,
+      lastModifiedAt: Date.now(),
+      lastModifiedBy: state.clientId,
+    };
+
+    editParticipantFromEvent(payload);
+    render();
+    broadcastParticipantEdit(payload);
+    showToast('Payment preferences saved', 'success');
+    closePaymentPreferencesSheet();
+  }
+
+  function showPaymentValidationError(type, message) {
+    const errorElement = type === 'primary' ? el.primaryPaymentDetailsError : el.secondaryPaymentDetailsError;
+    if (errorElement) {
+      errorElement.textContent = message;
+      errorElement.style.display = 'block';
+    }
+  }
+
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(err => {
+        console.warn('Failed to copy using Clipboard API:', err);
+        fallbackCopyToClipboard(text);
+      });
+    } else {
+      fallbackCopyToClipboard(text);
+    }
+  }
+
+  function fallbackCopyToClipboard(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand('copy');
+    } catch (err) {
+      console.warn('Failed to copy using fallback method:', err);
+    }
+    document.body.removeChild(textArea);
   }
 
   function ensureCurrencyOption(code) {
@@ -1538,9 +2141,10 @@
   function renderOnboardingParticipants() {
     if (!el.onboardingParticipantChips) return;
     if (!state.onboardingDraft.participants.length) {
-      el.onboardingParticipantChips.innerHTML = '<p class="onboarding-empty">Add at least one participant.</p>';
+      el.onboardingParticipantChips.style.display = 'none';
       return;
     }
+    el.onboardingParticipantChips.style.display = 'flex';
     const chips = state.onboardingDraft.participants.map(p => `
       <div class="onboarding-chip" role="listitem">
         <span>${escapeHtml(p.displayName)}</span>
@@ -1551,7 +2155,7 @@
   }
 
   function onboardingIsValid() {
-    return cleanName(state.onboardingDraft.title).length > 0 && state.onboardingDraft.participants.length > 0;
+    return cleanName(state.onboardingDraft.title).length > 0 && state.onboardingDraft.participants.length >= 2;
   }
 
   function updateOnboardingStartState() {
@@ -1925,7 +2529,10 @@
     const title = (el.expenseTitle && el.expenseTitle.value.trim()) || '';
     const amtStr = el.expenseAmount && el.expenseAmount.value.trim();
     const amountMinor = Math.round(parseFloat(amtStr||'0') * 100);
+    const payerId = el.payerSelect && el.payerSelect.value;
+    
     if (!title || !(amountMinor>0)) { showToast('Invalid expense','error'); return; }
+    if (!payerId) { showToast('Please select a payer','warn'); return; }
     const splits = collectSplits(amountMinor);
     // Determine createdAt from date input if provided
     let createdAtOverride = null;
@@ -1940,21 +2547,18 @@
         createdAtOverride = dt.getTime();
       }
     }
-    const expense = createExpense({ title, amountMinor, splits });
-    // Apply payer override if selected
-    if (el.payerSelect && el.payerSelect.value) {
-      expense.payer = el.payerSelect.value;
-      state.lastSelectedPayerId = el.payerSelect.value;
-    } else {
-      // If blank and we have an existing lastSelected still active, keep actor default
-      const stillActive = activeParticipants().some(p=>p.id === state.lastSelectedPayerId);
-      if (stillActive) expense.payer = state.lastSelectedPayerId;
-    }
+    const expense = createExpense({ title, amountMinor, splits, category: selectedCategory });
+    console.log('Creating expense with category:', selectedCategory); // Debug log
+    console.log('Full expense object:', expense); // Debug log
+    // Use the selected payer
+    expense.payer = payerId;
+    state.lastSelectedPayerId = payerId;
     if (createdAtOverride) {
       expense.createdAt = createdAtOverride;
     }
     broadcastExpense(expense);
-    // reset
+    console.log('Expense broadcasted, current selectedCategory still:', selectedCategory); // Debug log
+    // reset form but keep category selection until sheet closes
     if (el.expenseForm) el.expenseForm.reset();
     refreshSplitConfigUI();
   }
@@ -1990,6 +2594,16 @@
       const to = item.getAttribute('data-to');
       const amt = Number(item.getAttribute('data-amt'));
       openSettlementSheet({ from, to, amountMinor: amt });
+    }
+    
+    // Handle payment preference copy button
+    const copyBtn = e.target.closest && e.target.closest('.payment-copy-btn');
+    if (copyBtn) {
+      const textToCopy = copyBtn.getAttribute('data-copy');
+      if (textToCopy) {
+        copyToClipboard(textToCopy);
+        showToast('Copied to clipboard', 'success');
+      }
     }
   });
 
