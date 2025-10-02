@@ -255,39 +255,54 @@
 
   function initializeCategoryCarousel() {
     const carousel = document.getElementById('category-carousel-track');
-    if (!carousel) return;
+    if (!carousel) {
+      console.warn('Category carousel track not found');
+      return;
+    }
 
-    console.log('Initializing category carousel with selectedCategory:', selectedCategory); // Debug log
+    console.log('Initializing category carousel with selectedCategory:', selectedCategory);
 
-    // Create icon buttons for the carousel
-    const iconPromises = AVAILABLE_ICONS.map(async iconName => {
-      const iconHtml = await createIcon(iconName, { 
-        size: 32, 
-        selected: iconName === selectedCategory,
-        className: 'category-carousel-icon'
-      });
-      return {
-        iconName,
-        html: `<button type="button" class="category-carousel-btn ${iconName === selectedCategory ? 'selected' : ''}" data-icon="${iconName}" aria-label="Select ${iconName} category">${iconHtml}</button>`
-      };
+    // Create a simpler, more reliable version
+    let html = '';
+    AVAILABLE_ICONS.slice(0, 8).forEach(iconName => {
+      const isSelected = iconName === selectedCategory;
+      html += `<button type="button" class="category-carousel-btn ${isSelected ? 'selected' : ''}" data-icon="${iconName}" aria-label="Select ${iconName} category">📁</button>`;
     });
-
-    Promise.all(iconPromises).then(iconData => {
-      carousel.innerHTML = iconData.map(item => item.html).join('');
+    
+    carousel.innerHTML = html;
+    
+    // Add direct event listeners to each button
+    setTimeout(() => {
+      const buttons = carousel.querySelectorAll('.category-carousel-btn');
+      console.log('Found', buttons.length, 'category buttons');
       
-      // Add click handlers
-      carousel.querySelectorAll('.category-carousel-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+      buttons.forEach(btn => {
+        btn.addEventListener('click', function(e) {
           e.preventDefault();
           e.stopPropagation();
-          const iconName = btn.getAttribute('data-icon');
-          console.log('Category button clicked:', iconName); // Debug log
+          const iconName = this.getAttribute('data-icon');
+          console.log('Category clicked:', iconName);
           selectCategory(iconName);
         });
       });
       
-      console.log('Category carousel initialized with', carousel.children.length, 'buttons'); // Debug log
-    });
+      // Load icons asynchronously after event handlers are attached
+      loadCategoryIcons();
+    }, 100);
+  }
+  
+  async function loadCategoryIcons() {
+    const buttons = document.querySelectorAll('.category-carousel-btn');
+    for (const btn of buttons) {
+      const iconName = btn.getAttribute('data-icon');
+      try {
+        const iconHtml = await createIcon(iconName, { size: 32, className: 'category-carousel-icon' });
+        btn.innerHTML = iconHtml;
+      } catch (e) {
+        console.warn('Failed to load icon:', iconName);
+        btn.innerHTML = '📁'; // Keep fallback
+      }
+    }
   }
 
   function selectCategory(iconName) {
@@ -307,6 +322,81 @@
           icon.classList.toggle('icon-selected', isSelected);
         }
       });
+    }
+    
+    // Update category icon in title field
+    updateTitleCategoryIcon();
+    
+    // Auto-suggest title if current title is empty or matches a previous suggestion
+    const titleInput = document.getElementById('exp-title');
+    const suggestion = suggestTitleForCategory(iconName);
+    if (titleInput && suggestion) {
+      const currentTitle = titleInput.value.trim();
+      const isPreviousSuggestion = Object.values(categoryTitleSuggestions).includes(currentTitle);
+      
+      if (!currentTitle || isPreviousSuggestion) {
+        titleInput.value = suggestion;
+        // Don't auto-focus/select to avoid interrupting user typing
+      }
+    }
+  }
+
+  // Category auto-suggestions mapping
+  const categoryTitleSuggestions = {
+    'pizza': 'Pizza',
+    'fork-knife': 'Dinner',
+    'car': 'Transportation',
+    'taxi': 'Taxi ride',
+    'airplane-in-flight': 'Flight',
+    'bus': 'Bus ticket',
+    'suitcase-rolling': 'Travel',
+    'tent': 'Camping',
+    'castle-turret': 'Sightseeing',
+    'park': 'Park entrance',
+    'ticket': 'Event ticket',
+    'disco-ball': 'Entertainment',
+    'popcorn': 'Cinema',
+    'cookie': 'Snacks',
+    'brandy': 'Drinks',
+    'shopping-bag': 'Shopping',
+    'shopping-cart': 'Groceries',
+    'bank': 'ATM fee',
+    'charging-station': 'Charging',
+    'coins': 'Miscellaneous',
+    'hand-coins': 'Payment',
+    'money-wavy': 'Cash',
+    'receipt': 'Expense',
+    'wallet': 'Payment',
+    'gear-six': 'Service',
+    'books': 'Education',
+    'carrot': 'Food',
+    'scales': 'Service fee'
+  };
+
+  // Reverse mapping for title-to-category detection
+  const titleCategoryMapping = {};
+  Object.entries(categoryTitleSuggestions).forEach(([category, title]) => {
+    titleCategoryMapping[title.toLowerCase()] = category;
+  });
+
+  function suggestTitleForCategory(iconName) {
+    return categoryTitleSuggestions[iconName] || '';
+  }
+
+  function detectCategoryFromTitle(title) {
+    const lowercaseTitle = title.toLowerCase().trim();
+    return titleCategoryMapping[lowercaseTitle] || null;
+  }
+
+  async function updateTitleCategoryIcon() {
+    const iconContainer = document.getElementById('title-category-icon');
+    if (!iconContainer) return;
+    
+    try {
+      const iconHtml = await createIcon(selectedCategory, { size: 20, className: 'title-category-icon' });
+      iconContainer.innerHTML = iconHtml;
+    } catch (error) {
+      console.warn('Failed to update title category icon:', error);
     }
   }
 
@@ -786,6 +876,345 @@
   }
 
   // ------------------------------
+  // Enhanced Form UI Handlers
+  // ------------------------------
+  
+  function initializeEnhancedFormComponents() {
+    // Initialize currency selector
+    setupCurrencySelector();
+    
+    // Initialize date picker button
+    setupDatePicker();
+    
+    // Initialize payer selector
+    setupPayerSelector();
+    
+    // Initialize split mode toggles
+    setupSplitModeToggles();
+    
+    // Initialize title category icon
+    updateTitleCategoryIcon();
+    
+    // Initialize category popover
+    setupCategoryPopover();
+    
+    // Initialize smart title-category linking
+    setupSmartTitleCategoryLink();
+  }
+  
+  function setupCurrencySelector() {
+    const currencySelect = document.getElementById('exp-currency');
+    const currencySymbol = document.getElementById('amount-currency-symbol');
+    
+    if (!currencySelect || !currencySymbol) return;
+    
+    // Set initial currency
+    const activeCurr = activeCurrency();
+    currencySelect.value = activeCurr;
+    currencySymbol.textContent = currencySymbols[activeCurr] || '€';
+    
+    currencySelect.addEventListener('change', (e) => {
+      const selectedCurrency = e.target.value;
+      currencySymbol.textContent = currencySymbols[selectedCurrency] || selectedCurrency;
+    });
+  }
+  
+  function setupDatePicker() {
+    const dateBtn = document.getElementById('exp-date-btn');
+    const dateInput = document.getElementById('exp-date');
+    const dateDisplay = document.getElementById('date-display');
+    const calendarIcon = document.getElementById('calendar-icon');
+    
+    console.log('Setting up date picker:', { dateBtn: !!dateBtn, dateInput: !!dateInput, dateDisplay: !!dateDisplay });
+    
+    if (!dateBtn || !dateInput || !dateDisplay) {
+      console.warn('Date picker elements missing:', { dateBtn: !!dateBtn, dateInput: !!dateInput, dateDisplay: !!dateDisplay });
+      return;
+    }
+    
+    // Load calendar icon
+    loadCalendarIcon();
+    
+    // Set initial date to today
+    const today = new Date();
+    const todayISO = today.toISOString().slice(0, 10);
+    dateInput.value = todayISO;
+    dateInput.max = todayISO; // prevent future dates
+    updateDateDisplay();
+    
+    // Add click handler to the date button
+    dateBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('Date button clicked');
+      
+      // Multiple fallback methods to open date picker
+      try {
+        if (dateInput.showPicker) {
+          dateInput.showPicker();
+        } else {
+          dateInput.focus();
+          dateInput.click();
+        }
+      } catch (err) {
+        console.log('showPicker failed, trying click:', err);
+        dateInput.focus();
+        dateInput.click();
+      }
+    });
+    
+    dateInput.addEventListener('change', updateDateDisplay);
+    dateInput.addEventListener('input', updateDateDisplay);
+    
+    async function loadCalendarIcon() {
+      if (!calendarIcon) return;
+      
+      // Check if calendar-dots.svg exists, fallback to emoji
+      try {
+        const response = await fetch('./icons/calendar-dots.svg');
+        if (response.ok) {
+          const svgContent = await response.text();
+          const processedSvg = svgContent
+            .replace(/fill="#[^"]*"/g, 'fill="currentColor"')
+            .replace(/stroke="#[^"]*"/g, 'stroke="currentColor"')
+            .replace(/width="[^"]*"/g, 'width="18"')
+            .replace(/height="[^"]*"/g, 'height="18"');
+          calendarIcon.innerHTML = processedSvg;
+        } else {
+          calendarIcon.textContent = '📅'; // Fallback emoji
+        }
+      } catch (error) {
+        console.warn('Calendar icon not found, using emoji fallback');
+        calendarIcon.textContent = '📅'; // Fallback emoji
+      }
+    }
+    
+    function updateDateDisplay() {
+      const value = dateInput.value;
+      if (!value) {
+        dateDisplay.textContent = 'Select date';
+        return;
+      }
+      
+      const selectedDate = new Date(value + 'T12:00:00');
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      if (selectedDate.toDateString() === today.toDateString()) {
+        dateDisplay.textContent = 'Today';
+      } else if (selectedDate.toDateString() === yesterday.toDateString()) {
+        dateDisplay.textContent = 'Yesterday';
+      } else {
+        dateDisplay.textContent = selectedDate.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: selectedDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+        });
+      }
+    }
+  }
+  
+  function setupPayerSelector() {
+    const payerSelector = document.getElementById('payer-selector');
+    const hiddenSelect = document.getElementById('exp-payer');
+    
+    if (!payerSelector || !hiddenSelect) return;
+    
+    function renderPayerPills() {
+      const participants = activeParticipants();
+      const currentSelection = hiddenSelect.value;
+      
+      if (!participants.length) {
+        payerSelector.innerHTML = '<div style="color: var(--c-muted); font-size: var(--fs-sm); padding: var(--sp-2);">Add participants first</div>';
+        return;
+      }
+      
+      const pillsHtml = participants.map(p => {
+        const isActive = p.id === currentSelection;
+        return `<button type="button" class="payer-pill ${isActive ? 'active' : ''}" data-participant-id="${escapeHtml(p.id)}">${escapeHtml(p.displayName)}</button>`;
+      }).join('');
+      
+      payerSelector.innerHTML = pillsHtml;
+      
+      // Add click handlers
+      payerSelector.querySelectorAll('.payer-pill').forEach(pill => {
+        pill.addEventListener('click', (e) => {
+          e.preventDefault();
+          const participantId = pill.getAttribute('data-participant-id');
+          selectPayer(participantId);
+        });
+      });
+    }
+    
+    function selectPayer(participantId) {
+      hiddenSelect.value = participantId;
+      state.lastSelectedPayerId = participantId;
+      
+      // Update visual state
+      payerSelector.querySelectorAll('.payer-pill').forEach(pill => {
+        const isActive = pill.getAttribute('data-participant-id') === participantId;
+        pill.classList.toggle('active', isActive);
+      });
+    }
+    
+    // Initial render
+    renderPayerPills();
+    
+    // Re-render when participants change
+    const originalPopulate = populatePayerSelect;
+    populatePayerSelect = function() {
+      originalPopulate();
+      setTimeout(() => renderPayerPills(), 10); // Small delay to ensure select is populated
+    };
+  }
+  
+  function setupSplitModeToggles() {
+    const toggleContainer = document.getElementById('split-mode-toggles');
+    const hiddenSelect = document.getElementById('split-mode');
+    
+    if (!toggleContainer || !hiddenSelect) return;
+    
+    toggleContainer.addEventListener('click', (e) => {
+      const toggleBtn = e.target.closest('.split-toggle-btn');
+      if (!toggleBtn) return;
+      
+      e.preventDefault();
+      const mode = toggleBtn.getAttribute('data-mode');
+      selectSplitMode(mode);
+    });
+    
+    function selectSplitMode(mode) {
+      hiddenSelect.value = mode;
+      
+      // Update visual state
+      toggleContainer.querySelectorAll('.split-toggle-btn').forEach(btn => {
+        const isActive = btn.getAttribute('data-mode') === mode;
+        btn.classList.toggle('active', isActive);
+      });
+      
+      // Trigger the existing split config refresh
+      refreshSplitConfigUI();
+    }
+  }
+
+  function setupCategoryPopover() {
+    const moreBtn = document.getElementById('category-more-btn');
+    const backdrop = document.getElementById('category-popover-backdrop');
+    const popover = document.getElementById('category-popover');
+    const closeBtn = document.getElementById('category-popover-close');
+    const grid = document.getElementById('category-grid');
+    
+    console.log('Setting up category popover:', { moreBtn: !!moreBtn, backdrop: !!backdrop, popover: !!popover, grid: !!grid });
+    
+    if (!moreBtn || !backdrop || !popover || !grid) {
+      console.warn('Category popover elements missing');
+      return;
+    }
+    
+    // Populate grid with all category icons
+    function renderCategoryGrid() {
+      let html = '';
+      AVAILABLE_ICONS.forEach(iconName => {
+        const isSelected = iconName === selectedCategory;
+        html += `<button type="button" class="category-grid-btn ${isSelected ? 'selected' : ''}" data-icon="${iconName}" aria-label="Select ${iconName} category">📁</button>`;
+      });
+      
+      grid.innerHTML = html;
+      
+      // Add event listeners
+      setTimeout(() => {
+        const buttons = grid.querySelectorAll('.category-grid-btn');
+        buttons.forEach(btn => {
+          btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const iconName = this.getAttribute('data-icon');
+            console.log('Grid category clicked:', iconName);
+            selectCategory(iconName);
+            closeCategoryPopover();
+          });
+        });
+        
+        // Load icons asynchronously
+        loadGridIcons();
+      }, 100);
+    }
+    
+    async function loadGridIcons() {
+      const buttons = grid.querySelectorAll('.category-grid-btn');
+      for (const btn of buttons) {
+        const iconName = btn.getAttribute('data-icon');
+        try {
+          const iconHtml = await createIcon(iconName, { size: 32, className: 'category-grid-icon' });
+          btn.innerHTML = iconHtml;
+        } catch (e) {
+          console.warn('Failed to load grid icon:', iconName);
+          btn.innerHTML = '📁';
+        }
+      }
+    }
+    
+    function openCategoryPopover() {
+      console.log('Opening category popover');
+      renderCategoryGrid();
+      backdrop.hidden = false;
+      requestAnimationFrame(() => {
+        backdrop.classList.add('is-open');
+        popover.classList.add('is-open');
+        popover.removeAttribute('aria-hidden');
+      });
+    }
+    
+    function closeCategoryPopover() {
+      console.log('Closing category popover');
+      backdrop.classList.remove('is-open');
+      popover.classList.remove('is-open');
+      popover.setAttribute('aria-hidden', 'true');
+      setTimeout(() => {
+        backdrop.hidden = true;
+      }, 300);
+    }
+    
+    // Event listeners
+    moreBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      console.log('More button clicked');
+      openCategoryPopover();
+    });
+    
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeCategoryPopover);
+    }
+    
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) closeCategoryPopover();
+    });
+    
+    // ESC key to close
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && popover.classList.contains('is-open')) {
+        closeCategoryPopover();
+      }
+    });
+  }
+  
+  function setupSmartTitleCategoryLink() {
+    const titleInput = document.getElementById('exp-title');
+    if (!titleInput) return;
+    
+    // Listen for title changes to auto-detect category
+    titleInput.addEventListener('input', (e) => {
+      const title = e.target.value.trim();
+      if (title) {
+        const detectedCategory = detectCategoryFromTitle(title);
+        if (detectedCategory && detectedCategory !== selectedCategory) {
+          selectCategory(detectedCategory);
+        }
+      }
+    });
+  }
+
+  // ------------------------------
   // App Functions
   // ------------------------------
   function init() {
@@ -1123,6 +1552,22 @@
     // Initialize category carousel (will preserve selection if already set)
     initializeCategoryCarousel();
     console.log('Expense sheet opened, current selectedCategory:', selectedCategory); // Debug log
+    
+    // Initialize enhanced form components
+    initializeEnhancedFormComponents();
+    
+    // Make sure payer selector reflects current selection
+    setTimeout(() => {
+      const payerSelector = document.getElementById('payer-selector');
+      const hiddenSelect = document.getElementById('exp-payer');
+      if (payerSelector && hiddenSelect && hiddenSelect.value) {
+        payerSelector.querySelectorAll('.payer-pill').forEach(pill => {
+          const isActive = pill.getAttribute('data-participant-id') === hiddenSelect.value;
+          pill.classList.toggle('active', isActive);
+        });
+      }
+    }, 100);
+    
     // Preselect payer: lastSelectedPayerId if still active, else blank
     if (el.payerSelect) {
       const optsIds = Array.from(el.payerSelect.options).map(o=>o.value);
@@ -2483,7 +2928,7 @@
   function refreshSplitConfigUI() {
     if (!el.splitConfig) return;
     const mode = el.splitModeSelect ? el.splitModeSelect.value : 'even';
-  const participants = activeParticipants();
+    const participants = activeParticipants();
     if (!participants.length) {
       el.splitConfig.innerHTML = '<div style="font-size:.65rem;color:var(--muted);">Add participants to configure splits.</div>';
       return;
@@ -2491,24 +2936,104 @@
     if (mode === 'even') {
       el.splitConfig.innerHTML = `<div style="font-size:.65rem;color:var(--muted);">Evenly split among ${participants.length} participant(s).</div>`;
     } else if (mode === 'weight') {
-      el.splitConfig.innerHTML = participants.map(p=>`<label style="display:flex;align-items:center;gap:.4rem;font-size:.65rem;">${escapeHtml(p.displayName)}<input type="number" class="weight-input" data-pid="${p.id}" min="1" value="1" style="width:54px;padding:.15rem .25rem;font-size:.65rem;"/></label>`).join('');
+      // Enhanced weight controls with +/- buttons
+      const weightControlsHtml = participants.map(p => `
+        <div class="weight-control-item">
+          <span class="weight-participant-name">${escapeHtml(p.displayName)}</span>
+          <div class="weight-input-group">
+            <button type="button" class="weight-btn weight-decrease" data-pid="${p.id}">−</button>
+            <input type="number" class="weight-input" data-pid="${p.id}" min="0" step="0.1" value="1" />
+            <button type="button" class="weight-btn weight-increase" data-pid="${p.id}">+</button>
+          </div>
+        </div>
+      `).join('');
+      
+      el.splitConfig.innerHTML = `
+        <div class="weight-control-group">
+          ${weightControlsHtml}
+          <div class="weight-total" id="weight-total">Total weight = ${participants.length}.0</div>
+        </div>
+      `;
+      
+      // Add event listeners for weight controls
+      setupWeightControls();
     } else if (mode === 'manual' || mode === 'mixed') {
       el.splitConfig.innerHTML = participants.map(p=>`<label style="display:flex;align-items:center;gap:.4rem;font-size:.65rem;">${escapeHtml(p.displayName)}<input type="number" class="manual-input" data-pid="${p.id}" min="0" step="0.01" placeholder="0.00" style="width:70px;padding:.15rem .25rem;font-size:.65rem;"/></label>`).join('');
     }
   }
+  
+  function setupWeightControls() {
+    const weightControls = document.querySelectorAll('.weight-btn');
+    const weightInputs = document.querySelectorAll('.weight-input');
+    const totalDisplay = document.getElementById('weight-total');
+    
+    function updateTotal() {
+      const total = Array.from(weightInputs).reduce((sum, input) => {
+        return sum + (parseFloat(input.value) || 0);
+      }, 0);
+      if (totalDisplay) {
+        totalDisplay.textContent = `Total weight = ${total.toFixed(1)}`;
+      }
+    }
+    
+    // Handle +/- button clicks
+    weightControls.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const pid = btn.getAttribute('data-pid');
+        const input = document.querySelector(`.weight-input[data-pid="${pid}"]`);
+        if (!input) return;
+        
+        const currentValue = parseFloat(input.value) || 0;
+        
+        if (btn.classList.contains('weight-increase')) {
+          input.value = Math.min(currentValue + 0.5, 10); // Increment by 0.5, max 10
+        } else if (btn.classList.contains('weight-decrease')) {
+          input.value = Math.max(currentValue - 0.5, 0); // Decrement by 0.5, min 0
+        }
+        
+        updateTotal();
+      });
+    });
+    
+    // Handle direct input changes
+    weightInputs.forEach(input => {
+      input.addEventListener('input', updateTotal);
+      input.addEventListener('change', (e) => {
+        const value = parseFloat(e.target.value);
+        if (isNaN(value) || value < 0) {
+          e.target.value = 0;
+        } else if (value > 10) {
+          e.target.value = 10;
+        }
+        updateTotal();
+      });
+    });
+    
+    // Initial total update
+    updateTotal();
+  }
 
   function collectSplits(amountMinor) {
     const mode = el.splitModeSelect ? el.splitModeSelect.value : 'even';
-  const participants = activeParticipants();
+    const participants = activeParticipants();
     if (!participants.length) return [];
     if (mode === 'even') {
       return participants.map(p => ({ participantId: p.id, mode: 'even' }));
     } else if (mode === 'weight') {
       const weights = Array.from(el.splitConfig.querySelectorAll('.weight-input'));
-      return weights.map(inp => ({ participantId: inp.getAttribute('data-pid'), mode: 'weight', weight: Number(inp.value)||1 }));
+      return weights.map(inp => ({ 
+        participantId: inp.getAttribute('data-pid'), 
+        mode: 'weight', 
+        weight: parseFloat(inp.value) || 0
+      }));
     } else if (mode === 'manual') {
       const manuals = Array.from(el.splitConfig.querySelectorAll('.manual-input'));
-      return manuals.map(inp => ({ participantId: inp.getAttribute('data-pid'), mode: 'manual', amountMinor: Math.round(parseFloat(inp.value||'0')*100) }));
+      return manuals.map(inp => ({ 
+        participantId: inp.getAttribute('data-pid'), 
+        mode: 'manual', 
+        amountMinor: Math.round(parseFloat(inp.value||'0')*100) 
+      }));
     } else if (mode === 'mixed') {
       // Mixed: treat non-empty manual as manual; others even
       const manuals = Array.from(el.splitConfig.querySelectorAll('.manual-input'));
@@ -2530,6 +3055,7 @@
     const amtStr = el.expenseAmount && el.expenseAmount.value.trim();
     const amountMinor = Math.round(parseFloat(amtStr||'0') * 100);
     const payerId = el.payerSelect && el.payerSelect.value;
+    const selectedCurrency = document.getElementById('exp-currency')?.value || activeCurrency();
     
     if (!title || !(amountMinor>0)) { showToast('Invalid expense','error'); return; }
     if (!payerId) { showToast('Please select a payer','warn'); return; }
@@ -2548,6 +3074,8 @@
       }
     }
     const expense = createExpense({ title, amountMinor, splits, category: selectedCategory });
+    // Override currency if user selected different one
+    expense.currency = selectedCurrency;
     console.log('Creating expense with category:', selectedCategory); // Debug log
     console.log('Full expense object:', expense); // Debug log
     // Use the selected payer
@@ -2559,7 +3087,16 @@
     broadcastExpense(expense);
     console.log('Expense broadcasted, current selectedCategory still:', selectedCategory); // Debug log
     // reset form but keep category selection until sheet closes
-    if (el.expenseForm) el.expenseForm.reset();
+    if (el.expenseForm) {
+      el.expenseForm.reset();
+      // Re-initialize components after reset
+      setTimeout(() => {
+        initializeEnhancedFormComponents();
+        // Reset category to default but maintain visual state
+        selectedCategory = 'receipt';
+        updateTitleCategoryIcon();
+      }, 50);
+    }
     refreshSplitConfigUI();
   }
 
@@ -2580,7 +3117,7 @@
 
   // Delegate clicks for expense delete & settlement record
   document.addEventListener('click', (e) => {
-    const delBtn = e.target.closest && e.target.closest('.expense-delete');
+    const delBtn = e.target.closest && e.target.closest('.expense-delete, .expense-trash');
     if (delBtn) {
       const id = delBtn.getAttribute('data-id');
       const exp = state.expenses.get(id);

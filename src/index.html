@@ -137,6 +137,18 @@
 
     <button id="fab-add" class="fab" aria-label="Add expense">＋</button>
 
+    <!-- Category Grid Popover -->
+    <div class="popover-backdrop" id="category-popover-backdrop" hidden></div>
+    <div class="category-popover" id="category-popover" aria-hidden="true" role="dialog" aria-labelledby="category-popover-title">
+      <div class="popover-header">
+        <h3 id="category-popover-title">Choose Category</h3>
+        <button type="button" class="icon-btn close-btn" id="category-popover-close" aria-label="Close">✕</button>
+      </div>
+      <div class="category-grid" id="category-grid">
+        <!-- Category icons will be populated by JavaScript -->
+      </div>
+    </div>
+
     <div class="sheet-backdrop" id="expense-sheet-backdrop" hidden></div>
     <aside class="bottom-sheet" id="expense-sheet" aria-hidden="true" aria-labelledby="sheet-title" role="dialog">
       <div class="sheet-handle" aria-hidden="true"></div>
@@ -145,45 +157,118 @@
         <button type="button" class="icon-btn close-btn" id="sheet-close" aria-label="Close">✕</button>
       </div>
       <form id="expense-form" autocomplete="off" class="sheet-form">
-        <label class="fld">
-          <span class="fld-label">Title</span>
-          <input id="exp-title" required maxlength="140" placeholder="e.g. Lunch" />
-        </label>
-        <div class="fld">
-          <span class="fld-label">Category</span>
-          <div class="category-carousel" id="category-carousel">
-            <div class="category-carousel-track" id="category-carousel-track">
-              <!-- Icons will be populated by JavaScript -->
+        <!-- Details Section -->
+        <div class="section-group">
+          <h3 class="section-header-small">DETAILS</h3>
+          <div class="input-zone">
+            
+            <!-- Title with Category Icon -->
+            <label class="fld">
+              <span class="fld-label">Title</span>
+              <div class="input-with-icon">
+                <span class="input-prefix-icon" id="title-category-icon"></span>
+                <input id="exp-title" required maxlength="140" placeholder="e.g. Lunch" />
+              </div>
+            </label>
+            
+            <!-- Category Selection -->
+            <div class="fld">
+              <span class="fld-label">Category</span>
+              <div class="category-carousel" id="category-carousel">
+                <div class="category-carousel-track" id="category-carousel-track">
+                  <!-- Icons will be populated by JavaScript -->
+                </div>
+                <button type="button" class="category-more-btn" id="category-more-btn">
+                  <span class="more-icon">⋯</span>
+                  <span class="more-label">More</span>
+                </button>
+              </div>
+            </div>
+            
+            <!-- Amount with Integrated Currency -->
+            <div class="fld">
+              <span class="fld-label">Amount</span>
+              <div class="pill-input amount-pill">
+                <span class="currency-symbol" id="amount-currency-symbol">€</span>
+                <input id="exp-amount" required type="number" min="0.01" step="0.01" placeholder="0.00" />
+                <select id="exp-currency" class="currency-dropdown">
+                  <option value="EUR">EUR</option>
+                  <option value="USD">USD</option>
+                  <option value="GBP">GBP</option>
+                  <option value="CHF">CHF</option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- Date Picker Pill -->
+            <div class="fld">
+              <span class="fld-label">Date</span>
+              <button type="button" class="pill-input date-pill" id="exp-date-btn">
+                <span id="date-display">Today</span>
+                <span class="calendar-icon" id="calendar-icon">📅</span>
+              </button>
+              <input id="exp-date" type="date" required style="display: none;" />
             </div>
           </div>
         </div>
-        <label class="fld">
-          <span class="fld-label">Amount (EUR)</span>
-          <input id="exp-amount" required type="number" min="0.01" step="0.01" placeholder="0.00" />
-        </label>
-        <label class="fld">
-          <span class="fld-label">Date</span>
-          <input id="exp-date" type="date" required />
-        </label>
-        <div class="fld">
-          <span class="fld-label">Payer</span>
-          <select id="exp-payer" class="fld-select" required>
-            <option value="" selected>Select payer…</option>
-          </select>
+
+        <!-- Who pays? Section -->
+        <div class="section-group">
+          <h3 class="section-header-small">WHO PAYS?</h3>
+          <div class="input-zone">
+            <div class="fld">
+              <div class="payer-selector" id="payer-selector">
+                <!-- Participant pills will be populated by JavaScript -->
+              </div>
+              <select id="exp-payer" class="fld-select" required style="display: none;">
+                <option value="" selected>Select payer…</option>
+              </select>
+            </div>
+          </div>
         </div>
-        <label class="fld">
-          <span class="fld-label">Split Mode</span>
-          <select id="split-mode">
-            <option value="even" selected>Even</option>
-            <option value="weight">Weight</option>
-            <option value="manual">Manual</option>
-            <option value="mixed">Mixed (Manual + Weight/Even)</option>
-          </select>
-        </label>
-        <div id="split-config" class="split-config-box">
-          <div style="font-size:.65rem;color:var(--muted);">Add participants to configure splits. Mode-specific inputs will appear here.</div>
+
+        <!-- How to split? Section -->
+        <div class="section-group">
+          <h3 class="section-header-small">HOW TO SPLIT?</h3>
+          <div class="input-zone">
+            
+            <!-- Split Mode Toggle Buttons -->
+            <div class="fld">
+              <div class="split-mode-toggles" id="split-mode-toggles">
+                <button type="button" class="split-toggle-btn active" data-mode="even">
+                  <span class="split-icon">⚖️</span>
+                  <span class="split-label">Equal</span>
+                </button>
+                <button type="button" class="split-toggle-btn" data-mode="weight">
+                  <span class="split-icon">📊</span>
+                  <span class="split-label">Weight</span>
+                </button>
+                <button type="button" class="split-toggle-btn" data-mode="manual">
+                  <span class="split-icon">✏️</span>
+                  <span class="split-label">Custom</span>
+                </button>
+              </div>
+              <select id="split-mode" style="display: none;">
+                <option value="even" selected>Even</option>
+                <option value="weight">Weight</option>
+                <option value="manual">Manual</option>
+                <option value="mixed">Mixed (Manual + Weight/Even)</option>
+              </select>
+            </div>
+            
+            <div id="split-config" class="split-config-box">
+              <div style="font-size:.65rem;color:var(--muted);">Add participants to configure splits. Mode-specific inputs will appear here.</div>
+            </div>
+          </div>
         </div>
-        <div class="sheet-actions">
+
+        <!-- Sticky Bottom Button -->
+        <div class="sticky-bottom-actions">
+          <button type="submit" class="primary-btn large-btn">Add Expense</button>
+        </div>
+        
+        <!-- Hidden actions for compatibility -->
+        <div class="sheet-actions" style="display: none;">
           <button type="button" class="secondary-btn" id="sheet-cancel">Cancel</button>
           <button type="submit" class="primary-btn">Save</button>
         </div>
