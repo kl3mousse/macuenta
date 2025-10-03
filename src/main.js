@@ -253,56 +253,19 @@
   // Category carousel state
   let selectedCategory = 'receipt'; // Default to receipt
 
-  function initializeCategoryCarousel() {
-    const carousel = document.getElementById('category-carousel-track');
-    if (!carousel) {
-      console.warn('Category carousel track not found');
-      return;
-    }
-
-    console.log('Initializing category carousel with selectedCategory:', selectedCategory);
-
-    // Create a simpler, more reliable version
-    let html = '';
-    AVAILABLE_ICONS.slice(0, 8).forEach(iconName => {
-      const isSelected = iconName === selectedCategory;
-      html += `<button type="button" class="category-carousel-btn ${isSelected ? 'selected' : ''}" data-icon="${iconName}" aria-label="Select ${iconName} category">📁</button>`;
-    });
+  // Initialize category icon button (integrated in title field)
+  function initializeCategoryIconButton() {
+    const iconBtn = document.getElementById('title-category-icon-btn');
     
-    carousel.innerHTML = html;
-    
-    // Add direct event listeners to each button
-    setTimeout(() => {
-      const buttons = carousel.querySelectorAll('.category-carousel-btn');
-      console.log('Found', buttons.length, 'category buttons');
-      
-      buttons.forEach(btn => {
-        btn.addEventListener('click', function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          const iconName = this.getAttribute('data-icon');
-          console.log('Category clicked:', iconName);
-          selectCategory(iconName);
-        });
+    if (iconBtn) {
+      iconBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        openCategoryPopover();
       });
-      
-      // Load icons asynchronously after event handlers are attached
-      loadCategoryIcons();
-    }, 100);
-  }
-  
-  async function loadCategoryIcons() {
-    const buttons = document.querySelectorAll('.category-carousel-btn');
-    for (const btn of buttons) {
-      const iconName = btn.getAttribute('data-icon');
-      try {
-        const iconHtml = await createIcon(iconName, { size: 32, className: 'category-carousel-icon' });
-        btn.innerHTML = iconHtml;
-      } catch (e) {
-        console.warn('Failed to load icon:', iconName);
-        btn.innerHTML = '📁'; // Keep fallback
-      }
     }
+    
+    // Initialize with default category icon
+    updateTitleCategoryIcon();
   }
 
   function selectCategory(iconName) {
@@ -879,7 +842,44 @@
   // Enhanced Form UI Handlers
   // ------------------------------
   
+  function ensureBackdropsAreClean() {
+    // Only clean backdrops that are explicitly NOT open
+    const allBackdrops = document.querySelectorAll('[id*="backdrop"], .sheet-backdrop, .popover-backdrop');
+    
+    allBackdrops.forEach(backdrop => {
+      // Only clean if backdrop is not currently open
+      if (backdrop && !backdrop.classList.contains('is-open')) {
+        backdrop.hidden = true;
+        backdrop.style.pointerEvents = 'none';
+      }
+    });
+  }
+  
+  // Removed excessive click debugging
+  
+  function ensureSheetContentInteractive() {
+    // Ensure participants sheet and its inputs are interactive when sheet is open
+    const participantsSheet = document.getElementById('participants-sheet');
+    if (participantsSheet && participantsSheet.classList.contains('is-open')) {
+      participantsSheet.style.pointerEvents = 'auto';
+      
+      const tripNameInput = document.getElementById('trip-name-input');
+      const participantNameInput = document.getElementById('participant-name-input');
+      
+      if (tripNameInput) {
+        tripNameInput.style.pointerEvents = 'auto';
+      }
+      
+      if (participantNameInput) {
+        participantNameInput.style.pointerEvents = 'auto';
+      }
+    }
+  }
+  
   function initializeEnhancedFormComponents() {
+    // Ensure all backdrop elements are properly initialized
+    ensureBackdropsAreClean();
+    
     // Initialize currency selector
     setupCurrencySelector();
     
@@ -895,8 +895,10 @@
     // Initialize title category icon
     updateTitleCategoryIcon();
     
-    // Initialize category popover
-    setupCategoryPopover();
+    // Initialize category popover - delay this to ensure no conflicts
+    setTimeout(() => {
+      setupCategoryPopover();
+    }, 100);
     
     // Initialize smart title-category linking
     setupSmartTitleCategoryLink();
@@ -920,20 +922,18 @@
   }
   
   function setupDatePicker() {
-    const dateBtn = document.getElementById('exp-date-btn');
     const dateInput = document.getElementById('exp-date');
-    const dateDisplay = document.getElementById('date-display');
-    const calendarIcon = document.getElementById('calendar-icon');
+    const dateIconBtn = document.getElementById('date-icon-btn');
+    const dateDisplayText = document.getElementById('date-display-text');
+    const calendarIconSvg = document.getElementById('calendar-icon-svg');
     
-    console.log('Setting up date picker:', { dateBtn: !!dateBtn, dateInput: !!dateInput, dateDisplay: !!dateDisplay });
-    
-    if (!dateBtn || !dateInput || !dateDisplay) {
-      console.warn('Date picker elements missing:', { dateBtn: !!dateBtn, dateInput: !!dateInput, dateDisplay: !!dateDisplay });
+    if (!dateInput || !dateIconBtn || !dateDisplayText) {
+      console.warn('Date input elements not found');
       return;
     }
     
-    // Load calendar icon
-    loadCalendarIcon();
+    // Load calendar SVG icon
+    loadCalendarSvgIcon();
     
     // Set initial date to today
     const today = new Date();
@@ -942,34 +942,51 @@
     dateInput.max = todayISO; // prevent future dates
     updateDateDisplay();
     
-    // Add click handler to the date button
-    dateBtn.addEventListener('click', function(e) {
+    // Click on icon to open date picker
+    dateIconBtn.addEventListener('click', function(e) {
       e.preventDefault();
       e.stopPropagation();
-      console.log('Date button clicked');
       
-      // Multiple fallback methods to open date picker
-      try {
-        if (dateInput.showPicker) {
-          dateInput.showPicker();
-        } else {
+      // Temporarily enable the input for picker to work
+      dateInput.style.position = 'absolute';
+      dateInput.style.opacity = '0.01';
+      dateInput.style.pointerEvents = 'auto';
+      dateInput.style.left = '0';
+      dateInput.style.top = '0';
+      dateInput.style.width = '100%';
+      dateInput.style.height = '100%';
+      
+      setTimeout(() => {
+        try {
+          if (dateInput.showPicker) {
+            dateInput.showPicker();
+          } else {
+            dateInput.focus();
+            dateInput.click();
+          }
+        } catch (err) {
+          console.log('showPicker error:', err);
           dateInput.focus();
           dateInput.click();
         }
-      } catch (err) {
-        console.log('showPicker failed, trying click:', err);
-        dateInput.focus();
-        dateInput.click();
-      }
+        
+        // Restore hidden state after picker opens
+        setTimeout(() => {
+          dateInput.style.opacity = '0';
+          dateInput.style.pointerEvents = 'none';
+          dateInput.style.width = '1px';
+          dateInput.style.height = '1px';
+        }, 100);
+      }, 10);
     });
     
+    // Update display when date changes
     dateInput.addEventListener('change', updateDateDisplay);
     dateInput.addEventListener('input', updateDateDisplay);
     
-    async function loadCalendarIcon() {
-      if (!calendarIcon) return;
+    async function loadCalendarSvgIcon() {
+      if (!calendarIconSvg) return;
       
-      // Check if calendar-dots.svg exists, fallback to emoji
       try {
         const response = await fetch('./icons/calendar-dots.svg');
         if (response.ok) {
@@ -977,22 +994,22 @@
           const processedSvg = svgContent
             .replace(/fill="#[^"]*"/g, 'fill="currentColor"')
             .replace(/stroke="#[^"]*"/g, 'stroke="currentColor"')
-            .replace(/width="[^"]*"/g, 'width="18"')
-            .replace(/height="[^"]*"/g, 'height="18"');
-          calendarIcon.innerHTML = processedSvg;
+            .replace(/width="[^"]*"/g, 'width="22"')
+            .replace(/height="[^"]*"/g, 'height="22"');
+          calendarIconSvg.innerHTML = processedSvg;
         } else {
-          calendarIcon.textContent = '📅'; // Fallback emoji
+          calendarIconSvg.textContent = '📅';
         }
       } catch (error) {
         console.warn('Calendar icon not found, using emoji fallback');
-        calendarIcon.textContent = '📅'; // Fallback emoji
+        calendarIconSvg.textContent = '📅';
       }
     }
     
     function updateDateDisplay() {
       const value = dateInput.value;
       if (!value) {
-        dateDisplay.textContent = 'Select date';
+        dateDisplayText.textContent = 'Select date';
         return;
       }
       
@@ -1002,11 +1019,11 @@
       yesterday.setDate(yesterday.getDate() - 1);
       
       if (selectedDate.toDateString() === today.toDateString()) {
-        dateDisplay.textContent = 'Today';
+        dateDisplayText.textContent = 'Today';
       } else if (selectedDate.toDateString() === yesterday.toDateString()) {
-        dateDisplay.textContent = 'Yesterday';
+        dateDisplayText.textContent = 'Yesterday';
       } else {
-        dateDisplay.textContent = selectedDate.toLocaleDateString('en-US', {
+        dateDisplayText.textContent = selectedDate.toLocaleDateString('en-US', {
           month: 'short',
           day: 'numeric',
           year: selectedDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
@@ -1099,18 +1116,21 @@
   }
 
   function setupCategoryPopover() {
-    const moreBtn = document.getElementById('category-more-btn');
     const backdrop = document.getElementById('category-popover-backdrop');
     const popover = document.getElementById('category-popover');
     const closeBtn = document.getElementById('category-popover-close');
     const grid = document.getElementById('category-grid');
     
-    console.log('Setting up category popover:', { moreBtn: !!moreBtn, backdrop: !!backdrop, popover: !!popover, grid: !!grid });
-    
-    if (!moreBtn || !backdrop || !popover || !grid) {
-      console.warn('Category popover elements missing');
+    if (!backdrop || !popover || !grid) {
       return;
     }
+    
+    // CRITICAL: Ensure backdrop starts completely invisible and non-interactive
+    backdrop.hidden = true;
+    backdrop.style.display = 'none';
+    backdrop.classList.remove('is-open');
+    popover.classList.remove('is-open');
+    popover.setAttribute('aria-hidden', 'true');
     
     // Populate grid with all category icons
     function renderCategoryGrid() {
@@ -1129,7 +1149,6 @@
           btn.addEventListener('click', function(e) {
             e.preventDefault();
             const iconName = this.getAttribute('data-icon');
-            console.log('Grid category clicked:', iconName);
             selectCategory(iconName);
             closeCategoryPopover();
           });
@@ -1155,8 +1174,8 @@
     }
     
     function openCategoryPopover() {
-      console.log('Opening category popover');
       renderCategoryGrid();
+      backdrop.style.display = 'block';
       backdrop.hidden = false;
       requestAnimationFrame(() => {
         backdrop.classList.add('is-open');
@@ -1166,22 +1185,16 @@
     }
     
     function closeCategoryPopover() {
-      console.log('Closing category popover');
       backdrop.classList.remove('is-open');
       popover.classList.remove('is-open');
       popover.setAttribute('aria-hidden', 'true');
       setTimeout(() => {
         backdrop.hidden = true;
+        backdrop.style.display = 'none';
       }, 300);
     }
     
     // Event listeners
-    moreBtn.addEventListener('click', function(e) {
-      e.preventDefault();
-      console.log('More button clicked');
-      openCategoryPopover();
-    });
-    
     if (closeBtn) {
       closeBtn.addEventListener('click', closeCategoryPopover);
     }
@@ -1196,6 +1209,9 @@
         closeCategoryPopover();
       }
     });
+    
+    // Make openCategoryPopover available globally for the category icon button
+    window.openCategoryPopover = openCategoryPopover;
   }
   
   function setupSmartTitleCategoryLink() {
@@ -1549,9 +1565,9 @@
       el.expenseDate.max = iso; // prevent future dates for now
       if (!el.expenseDate.value) el.expenseDate.value = iso;
     }
-    // Initialize category carousel (will preserve selection if already set)
-    initializeCategoryCarousel();
-    console.log('Expense sheet opened, current selectedCategory:', selectedCategory); // Debug log
+    
+    // Initialize category icon button (integrated in title field)
+    initializeCategoryIconButton();
     
     // Initialize enhanced form components
     initializeEnhancedFormComponents();
@@ -1609,6 +1625,11 @@
       participantsSheet.panel?.classList.add('is-open');
     });
     participantsSheet.panel?.setAttribute('aria-hidden', 'false');
+    
+    // Ensure content inside the sheet is interactive after opening
+    setTimeout(() => {
+      ensureSheetContentInteractive();
+    }, 100);
     setTimeout(() => {
       el.tripNameInput && el.tripNameInput.focus();
     }, 80);

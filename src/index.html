@@ -157,39 +157,24 @@
         <button type="button" class="icon-btn close-btn" id="sheet-close" aria-label="Close">✕</button>
       </div>
       <form id="expense-form" autocomplete="off" class="sheet-form">
-        <!-- Details Section -->
-        <div class="section-group">
-          <h3 class="section-header-small">DETAILS</h3>
-          <div class="input-zone">
-            
-            <!-- Title with Category Icon -->
-            <label class="fld">
-              <span class="fld-label">Title</span>
-              <div class="input-with-icon">
-                <span class="input-prefix-icon" id="title-category-icon"></span>
-                <input id="exp-title" required maxlength="140" placeholder="e.g. Lunch" />
-              </div>
-            </label>
-            
-            <!-- Category Selection -->
-            <div class="fld">
-              <span class="fld-label">Category</span>
-              <div class="category-carousel" id="category-carousel">
-                <div class="category-carousel-track" id="category-carousel-track">
-                  <!-- Icons will be populated by JavaScript -->
-                </div>
-                <button type="button" class="category-more-btn" id="category-more-btn">
-                  <span class="more-icon">⋯</span>
-                  <span class="more-label">More</span>
+        <!-- Main Details -->
+        <div class="form-section">
+            <!-- Title with Integrated Category Icon -->
+            <div class="form-field">
+              <div class="pill-input title-pill">
+                <button type="button" class="input-icon-square category-icon-square" id="title-category-icon-btn" aria-label="Select category">
+                  <span class="input-prefix-icon" id="title-category-icon"></span>
                 </button>
+                <input id="exp-title" required maxlength="140" placeholder="What did you pay for?" />
               </div>
             </div>
             
             <!-- Amount with Integrated Currency -->
-            <div class="fld">
-              <span class="fld-label">Amount</span>
+            <div class="form-field">
               <div class="pill-input amount-pill">
-                <span class="currency-symbol" id="amount-currency-symbol">€</span>
+                <div class="input-icon-square">
+                  <span class="currency-symbol" id="amount-currency-symbol">€</span>
+                </div>
                 <input id="exp-amount" required type="number" min="0.01" step="0.01" placeholder="0.00" />
                 <select id="exp-currency" class="currency-dropdown">
                   <option value="EUR">EUR</option>
@@ -201,65 +186,57 @@
             </div>
             
             <!-- Date Picker Pill -->
-            <div class="fld">
-              <span class="fld-label">Date</span>
-              <button type="button" class="pill-input date-pill" id="exp-date-btn">
-                <span id="date-display">Today</span>
-                <span class="calendar-icon" id="calendar-icon">📅</span>
-              </button>
-              <input id="exp-date" type="date" required style="display: none;" />
+            <div class="form-field">
+              <div class="pill-input date-pill" id="date-pill-wrapper">
+                <button type="button" class="input-icon-square date-icon-square" id="date-icon-btn" aria-label="Select date">
+                  <span class="calendar-icon-svg" id="calendar-icon-svg"></span>
+                </button>
+                <span class="date-display-text" id="date-display-text">Today</span>
+                <input id="exp-date" type="date" required class="date-input-field" />
+              </div>
             </div>
-          </div>
         </div>
 
         <!-- Who pays? Section -->
-        <div class="section-group">
-          <h3 class="section-header-small">WHO PAYS?</h3>
-          <div class="input-zone">
-            <div class="fld">
-              <div class="payer-selector" id="payer-selector">
-                <!-- Participant pills will be populated by JavaScript -->
-              </div>
-              <select id="exp-payer" class="fld-select" required style="display: none;">
-                <option value="" selected>Select payer…</option>
-              </select>
-            </div>
+        <div class="form-section">
+          <h3 class="section-header">Who paid?</h3>
+          <div class="payer-selector" id="payer-selector">
+            <!-- Participant pills will be populated by JavaScript -->
           </div>
+          <select id="exp-payer" class="fld-select" required style="display: none;">
+            <option value="" selected>Select payer…</option>
+          </select>
         </div>
 
         <!-- How to split? Section -->
-        <div class="section-group">
-          <h3 class="section-header-small">HOW TO SPLIT?</h3>
-          <div class="input-zone">
+        <div class="form-section">
+          <h3 class="section-header">How to split?</h3>
             
             <!-- Split Mode Toggle Buttons -->
-            <div class="fld">
-              <div class="split-mode-toggles" id="split-mode-toggles">
-                <button type="button" class="split-toggle-btn active" data-mode="even">
-                  <span class="split-icon">⚖️</span>
-                  <span class="split-label">Equal</span>
-                </button>
-                <button type="button" class="split-toggle-btn" data-mode="weight">
-                  <span class="split-icon">📊</span>
-                  <span class="split-label">Weight</span>
-                </button>
-                <button type="button" class="split-toggle-btn" data-mode="manual">
-                  <span class="split-icon">✏️</span>
-                  <span class="split-label">Custom</span>
-                </button>
-              </div>
-              <select id="split-mode" style="display: none;">
-                <option value="even" selected>Even</option>
-                <option value="weight">Weight</option>
-                <option value="manual">Manual</option>
-                <option value="mixed">Mixed (Manual + Weight/Even)</option>
-              </select>
+            <div class="split-mode-toggles" id="split-mode-toggles">
+              <button type="button" class="split-toggle-btn active" data-mode="even">
+                <span class="split-icon">⚖️</span>
+                <span class="split-label">Equal</span>
+              </button>
+              <button type="button" class="split-toggle-btn" data-mode="weight">
+                <span class="split-icon">📊</span>
+                <span class="split-label">Weight</span>
+              </button>
+              <button type="button" class="split-toggle-btn" data-mode="manual">
+                <span class="split-icon">✏️</span>
+                <span class="split-label">Custom</span>
+              </button>
             </div>
+            <select id="split-mode" style="display: none;">
+              <option value="even" selected>Even</option>
+              <option value="weight">Weight</option>
+              <option value="manual">Manual</option>
+              <option value="mixed">Mixed (Manual + Weight/Even)</option>
+            </select>
             
             <div id="split-config" class="split-config-box">
-              <div style="font-size:.65rem;color:var(--muted);">Add participants to configure splits. Mode-specific inputs will appear here.</div>
+              <p class="split-helper-text">Evenly split among 3 participant(s).</p>
             </div>
-          </div>
         </div>
 
         <!-- Sticky Bottom Button -->
